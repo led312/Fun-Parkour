@@ -1,0 +1,6 @@
+{
+  "name": "Kinetic Bounce - KID-RUN!",
+  "description": "An interactive, motion-inspired kid runner game with 3D cartoon visuals, pose calibration, gameplay runner stage, camera feedback, shop, and high-score celebrations.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

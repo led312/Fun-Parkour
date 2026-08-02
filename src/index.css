@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 48;
+    display: inline-block;
+    line-height: 1;
+    text-transform: none;
+    letter-spacing: normal;
+    word-wrap: normal;
+    white-space: nowrap;
+    direction: ltr;
+  }
+  
+  .symbol-filled {
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 48;
+  }
+
+  /* 3D Button Press Effect */
+  .btn-bounce {
+    position: relative;
+    transition: all 0.1s ease;
+  }
+  .btn-bounce:active {
+    transform: translateY(4px);
+  }
+
+  /* Animated Floating */
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-12px) rotate(6deg); }
+  }
+  .floating-star {
+    animation: float 4s ease-in-out infinite;
+  }
+
+  /* Focus Ring Animation */
+  .input-focus-pulse:focus-within {
+    animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  @keyframes pulse-ring {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(0, 87, 193, 0.3); }
+    50% { box-shadow: 0 0 0 8px rgba(0, 87, 193, 0.1); }
+  }
+
+  /* Bouncy Text Animation */
+  .bouncy-text {
+    display: inline-block;
+    animation: bounce 0.6s infinite alternate cubic-bezier(0.36, 0, 0.66, -0.56);
+  }
+  @keyframes bounce {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(-15px); }
+  }
+
+  /* Trophy Glow */
+  .trophy-glow {
+    filter: drop-shadow(0 0 15px rgba(255, 182, 139, 0.8));
+    animation: pulse-glow 2s infinite ease-in-out;
+  }
+  @keyframes pulse-glow {
+    0%, 100% { transform: scale(1); filter: drop-shadow(0 0 15px rgba(255, 182, 139, 0.8)); }
+    50% { transform: scale(1.05); filter: drop-shadow(0 0 30px rgba(255, 122, 0, 1)); }
+  }
+
+  /* Star Pop */
+  .star-pop {
+    animation: starPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  }
+  @keyframes starPop {
+    0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+    80% { transform: scale(1.2) rotate(10deg); }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  }
+
+  /* Scanline for Camera Feed */
+  .scanline {
+    background: linear-gradient(to bottom, transparent 50%, rgba(255, 255, 255, 0.08) 50%);
+    background-size: 100% 4px;
+  }
+
+  /* Pulse Glow for Calibration */
+  @keyframes pulse-glow-calibration {
+    0%, 100% { opacity: 0.6; filter: drop-shadow(0 0 10px #20b900); }
+    50% { opacity: 1; filter: drop-shadow(0 0 30px #79ff5b); }
+  }
+  .animate-pulse-glow {
+    animation: pulse-glow-calibration 2s infinite ease-in-out;
+  }
+}
+
