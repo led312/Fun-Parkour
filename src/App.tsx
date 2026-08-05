@@ -56,7 +56,7 @@ export default function App() {
 
   const handleTabSelect = (tab: TabState) => {
     setActiveTab(tab);
-    if (tab === 'bolt' || tab === 'wand') {
+    if (tab === 'bolt') {
       setScreen('SHOP');
     } else if (tab === 'rocket') {
       if (screen === 'LOGIN') {

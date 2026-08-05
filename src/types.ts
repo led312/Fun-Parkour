@@ -1,6 +1,6 @@
 export type ScreenState = 'LOGIN' | 'LOBBY' | 'CALIBRATION' | 'GAMEPLAY' | 'RESULTS' | 'SHOP';
 
-export type TabState = 'bolt' | 'shield' | 'rocket' | 'wand';
+export type TabState = 'bolt' | 'shield' | 'rocket';
 
 export interface UserProfile {
   name: string;

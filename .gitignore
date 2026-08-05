@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# User account data (registered via the auth server)
+data/user.json

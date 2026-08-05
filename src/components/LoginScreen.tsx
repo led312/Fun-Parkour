@@ -7,18 +7,53 @@ interface LoginScreenProps {
   onLoginSuccess: (name: string, email: string, isGuest: boolean) => void;
 }
 
+type AuthMode = 'login' | 'register';
+
 export const LoginScreen: React.FC<LoginScreenProps> = ({
-  user,
   onLoginSuccess,
 }) => {
-  const [runnerName, setRunnerName] = useState(user.name || '');
-  const [parentEmail, setParentEmail] = useState(user.parentEmail || '');
+  const [mode, setMode] = useState<AuthMode>('login');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const switchMode = (next: AuthMode) => {
+    playButtonClick();
+    setMode(next);
+    setError('');
+    setConfirmPassword('');
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     playButtonClick();
-    const finalName = runnerName.trim() || 'Speedy Runner';
-    onLoginSuccess(finalName, parentEmail, false);
+    setError('');
+
+    if (mode === 'register' && password !== confirmPassword) {
+      setError('两次输入的密码不一致');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/${mode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone.trim(), password }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || '请求失败，请稍后再试');
+        return;
+      }
+      onLoginSuccess(data.phone || phone.trim(), '', false);
+    } catch {
+      setError('无法连接服务器，请确认服务端已启动');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGuest = () => {
@@ -74,49 +109,103 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       {/* Login Form Container */}
       <div className="w-full max-w-md bg-[#e8eff1] rounded-3xl p-6 sm:p-8 border-4 border-[#e0c0af] shadow-[0_8px_0_0_rgba(0,0,0,0.12)]">
+        {/* Mode Toggle */}
+        <div className="flex rounded-2xl border-4 border-[#e0c0af] overflow-hidden mb-6 bg-white">
+          <button
+            type="button"
+            onClick={() => switchMode('login')}
+            className={`flex-1 py-3 font-extrabold text-lg transition-colors ${
+              mode === 'login'
+                ? 'bg-[#0057c1] text-white'
+                : 'text-[#0057c1] hover:bg-[#d9e2ff]'
+            }`}
+          >
+            登录
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode('register')}
+            className={`flex-1 py-3 font-extrabold text-lg transition-colors ${
+              mode === 'register'
+                ? 'bg-[#0057c1] text-white'
+                : 'text-[#0057c1] hover:bg-[#d9e2ff]'
+            }`}
+          >
+            注册
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Runner Name Field */}
+          {/* Phone Field */}
           <div className="space-y-2 input-focus-pulse rounded-2xl">
             <label className="block font-bold text-xs sm:text-sm text-[#584235] px-2 tracking-wider">
-              RUNNER NAME
+              手机号
             </label>
             <div className="relative">
               <input
-                type="text"
-                value={runnerName}
-                onChange={(e) => setRunnerName(e.target.value)}
-                placeholder="Type your hero name..."
+                type="tel"
+                inputMode="numeric"
+                maxLength={11}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                placeholder="请输入 11 位手机号"
                 className="w-full py-4 sm:py-5 px-5 sm:px-6 rounded-2xl border-4 border-[#e0c0af] bg-white text-lg sm:text-xl font-semibold focus:border-[#0057c1] focus:ring-0 outline-none transition-all placeholder:text-[#d4dbdd] text-[#161d1f]"
               />
               <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-[#0057c1] text-2xl">
-                face
+                smartphone
               </span>
             </div>
           </div>
 
-          {/* Parent Email Field */}
+          {/* Password Field */}
           <div className="space-y-2 input-focus-pulse rounded-2xl">
             <label className="block font-bold text-xs sm:text-sm text-[#584235] px-2 tracking-wider">
-              PARENT EMAIL
+              密码
             </label>
             <div className="relative">
               <input
-                type="email"
-                value={parentEmail}
-                onChange={(e) => setParentEmail(e.target.value)}
-                placeholder="Grown-ups, enter email here"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="至少 6 位密码"
                 className="w-full py-4 sm:py-5 px-5 sm:px-6 rounded-2xl border-4 border-[#e0c0af] bg-white text-lg sm:text-xl font-semibold focus:border-[#0057c1] focus:ring-0 outline-none transition-all placeholder:text-[#d4dbdd] text-[#161d1f]"
               />
               <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-[#0057c1] text-2xl">
-                mail
+                lock
               </span>
             </div>
           </div>
+
+          {/* Confirm Password Field (register only) */}
+          {mode === 'register' && (
+            <div className="space-y-2 input-focus-pulse rounded-2xl">
+              <label className="block font-bold text-xs sm:text-sm text-[#584235] px-2 tracking-wider">
+                确认密码
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="再次输入密码"
+                  className="w-full py-4 sm:py-5 px-5 sm:px-6 rounded-2xl border-4 border-[#e0c0af] bg-white text-lg sm:text-xl font-semibold focus:border-[#0057c1] focus:ring-0 outline-none transition-all placeholder:text-[#d4dbdd] text-[#161d1f]"
+                />
+                <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-[#0057c1] text-2xl">
+                  lock_reset
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {error && (
+            <p className="font-bold text-sm text-[#d32f2f] px-2">{error}</p>
+          )}
 
           {/* Primary Action Button */}
-          <button type="submit" className="w-full btn-bounce group pt-2">
+          <button type="submit" disabled={loading} className="w-full btn-bounce group pt-2 disabled:opacity-60">
             <div className="bg-[#ff7a00] py-4 sm:py-5 rounded-2xl border-b-8 border-[#753400] text-[#5c2800] font-extrabold text-2xl sm:text-3xl flex items-center justify-center gap-3 transition-all group-hover:brightness-110 active:border-b-0">
-              <span>LET'S GO!</span>
+              <span>{loading ? '请稍候...' : mode === 'login' ? '登录' : '注册'}</span>
               <span className="material-symbols-outlined text-3xl sm:text-4xl symbol-filled">
                 play_circle
               </span>
