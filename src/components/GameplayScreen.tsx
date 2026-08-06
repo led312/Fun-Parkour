@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { playCoinSound, playJumpSound, playVictorySound, playButtonClick } from '../utils/audio';
+import { playCoinSound, playJumpSound, playButtonClick } from '../utils/audio';
 
 interface GameplayScreenProps {
   onGameOver: (finalScore: number, starsEarned: number) => void;
@@ -10,13 +10,12 @@ interface Obstacle {
   id: number;
   lane: number; // 0: Left, 1: Center, 2: Right
   z: number; // 100 (far) to 0 (close)
-  type: 'cone' | 'hurdle' | 'coin' | 'star' | 'bolt';
+  type: 'cone' | 'hurdle' | 'coin' | 'bolt';
   collected?: boolean;
 }
 
 export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   onGameOver,
-  onPause,
 }) => {
   const [score, setScore] = useState(2100);
   const [combo, setCombo] = useState(5);
@@ -25,7 +24,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [isSliding, setIsSliding] = useState(false);
   const [hasShield, setHasShield] = useState(false);
   const [hasBoost, setHasBoost] = useState(false);
-  const [showWebcam, setShowWebcam] = useState(true);
   const [webcamActive, setWebcamActive] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -33,6 +31,26 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const obstaclesRef = useRef<Obstacle[]>([]);
   const frameRef = useRef<number>(0);
   const nextIdRef = useRef<number>(1);
+  const scoreRef = useRef<number>(score);
+  const gameOverRef = useRef<boolean>(false);
+
+  // Keep a live copy of score so the game loop can report it on game over
+  useEffect(() => {
+    scoreRef.current = score;
+  }, [score]);
+
+  // Match canvas resolution to its displayed size so nothing is cropped
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const resize = () => {
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
 
   // Webcam init
   useEffect(() => {
@@ -84,16 +102,16 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   useEffect(() => {
     let lastSpawn = Date.now();
     let scoreInterval = setInterval(() => {
-      setScore((s) => s + 12);
+      setScore((s) => s + 5);
     }, 100);
 
     const runLoop = () => {
       const now = Date.now();
       // Spawn items
-      if (now - lastSpawn > 1100) {
+      if (now - lastSpawn > 1400) {
         lastSpawn = now;
-        const types: ('cone' | 'hurdle' | 'coin' | 'star' | 'bolt')[] = [
-          'coin', 'star', 'cone', 'hurdle', 'coin', 'star', 'bolt',
+        const types: ('cone' | 'hurdle' | 'coin' | 'bolt')[] = [
+          'coin', 'coin', 'cone', 'hurdle', 'coin', 'bolt',
         ];
         const randomType = types[Math.floor(Math.random() * types.length)];
         const randomLane = Math.floor(Math.random() * 3);
@@ -107,25 +125,20 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       }
 
       // Update positions
-      const speed = hasBoost ? 2.5 : 1.6;
+      const speed = hasBoost ? 1.5 : 0.9;
       obstaclesRef.current.forEach((obs) => {
         obs.z -= speed;
       });
 
       // Filter off-screen
       obstaclesRef.current = obstaclesRef.current.filter((obs) => {
-        if (obs.z <= 5 && !obs.collected) {
+        if (obs.z <= 5 && !obs.collected && !gameOverRef.current) {
           // Check collision at player z range (5 ~ 0)
           if (obs.lane === lane) {
             if (obs.type === 'coin') {
               obs.collected = true;
               playCoinSound();
               setScore((s) => s + 50);
-              setCombo((c) => Math.min(10, c + 1));
-            } else if (obs.type === 'star') {
-              obs.collected = true;
-              playCoinSound();
-              setScore((s) => s + 100);
               setCombo((c) => Math.min(10, c + 1));
             } else if (obs.type === 'bolt') {
               obs.collected = true;
@@ -140,8 +153,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
                 obs.collected = true;
                 setHasShield(false);
               } else {
-                // Minor hit
-                setCombo(1);
+                // Hit an obstacle: run ends
+                gameOverRef.current = true;
+                onGameOver(scoreRef.current, 0);
               }
             }
           }
@@ -156,6 +170,10 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         if (ctx) {
           const width = canvas.width;
           const height = canvas.height;
+
+          // Base ground fill: covers the whole canvas so no frame residue remains
+          ctx.fillStyle = '#64c852';
+          ctx.fillRect(0, 0, width, height);
 
           // Sky gradient
           const skyGrad = ctx.createLinearGradient(0, 0, 0, height * 0.45);
@@ -179,12 +197,15 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
           const vanishingX = width / 2;
           const vanishingY = height * 0.42;
+          // Track bottom spans exactly the visible width so the three lanes
+          // split the screen into equal thirds and side lanes stay centered
+          const marginX = 0;
 
           ctx.beginPath();
           ctx.moveTo(vanishingX - 40, vanishingY);
           ctx.lineTo(vanishingX + 40, vanishingY);
-          ctx.lineTo(width + 120, height);
-          ctx.lineTo(-120, height);
+          ctx.lineTo(width + marginX, height);
+          ctx.lineTo(-marginX, height);
           ctx.closePath();
           ctx.fill();
 
@@ -193,7 +214,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           ctx.lineWidth = 4;
           for (let i = 1; i <= 2; i++) {
             const laneStartx = vanishingX - 40 + (i * 80) / 3;
-            const laneEndX = -120 + (i * (width + 240)) / 3;
+            const laneEndX = -marginX + (i * (width + marginX * 2)) / 3;
 
             ctx.beginPath();
             ctx.setLineDash([15, 15]);
@@ -206,15 +227,15 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           // Orange track side borders
           ctx.fillStyle = '#ff7a00';
           ctx.beginPath();
-          ctx.moveTo(-120, height);
-          ctx.lineTo(-40, height);
+          ctx.moveTo(-marginX, height);
+          ctx.lineTo(-marginX * 0.33, height);
           ctx.lineTo(vanishingX - 50, vanishingY);
           ctx.lineTo(vanishingX - 40, vanishingY);
           ctx.fill();
 
           ctx.beginPath();
-          ctx.moveTo(width + 120, height);
-          ctx.lineTo(width + 40, height);
+          ctx.moveTo(width + marginX, height);
+          ctx.lineTo(width + marginX * 0.33, height);
           ctx.lineTo(vanishingX + 50, vanishingY);
           ctx.lineTo(vanishingX + 40, vanishingY);
           ctx.fill();
@@ -227,11 +248,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             const objY = vanishingY + (height - vanishingY) * scale;
 
             // Lane X position calculation
-            const laneLeftX = -120 + (obs.lane * (width + 240)) / 3;
-            const laneRightX = -120 + ((obs.lane + 1) * (width + 240)) / 3;
+            const laneLeftX = -marginX + (obs.lane * (width + marginX * 2)) / 3;
+            const laneRightX = -marginX + ((obs.lane + 1) * (width + marginX * 2)) / 3;
             const objX = (laneLeftX + laneRightX) / 2 * scale + vanishingX * (1 - scale);
 
-            const size = Math.max(12, 50 * scale);
+            const size = Math.max(22, 85 * scale);
 
             ctx.save();
             ctx.translate(objX, objY);
@@ -248,11 +269,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               ctx.font = `bold ${Math.max(10, 18 * scale)}px sans-serif`;
               ctx.textAlign = 'center';
               ctx.fillText('$', 0, -size / 4);
-            } else if (obs.type === 'star') {
-              ctx.fillStyle = '#ffaa00';
-              ctx.font = `${Math.max(16, 42 * scale)}px sans-serif`;
-              ctx.textAlign = 'center';
-              ctx.fillText('⭐', 0, -size / 3);
             } else if (obs.type === 'bolt') {
               ctx.fillStyle = '#39ff14';
               ctx.font = `${Math.max(16, 40 * scale)}px sans-serif`;
@@ -279,10 +295,10 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
           // Draw Runner Character in Perspective
           const runnerScale = 0.9;
-          const playerLaneLeftX = -120 + (lane * (width + 240)) / 3;
-          const playerLaneRightX = -120 + ((lane + 1) * (width + 240)) / 3;
+          const playerLaneLeftX = -marginX + (lane * (width + marginX * 2)) / 3;
+          const playerLaneRightX = -marginX + ((lane + 1) * (width + marginX * 2)) / 3;
           const playerX = (playerLaneLeftX + playerLaneRightX) / 2;
-          let playerY = height - 100;
+          let playerY = height - 160;
 
           if (isJumping) {
             playerY -= 65;
@@ -291,7 +307,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           // Runner Shadow
           ctx.fillStyle = 'rgba(0,0,0,0.25)';
           ctx.beginPath();
-          ctx.ellipse(playerX, height - 25, 40 * runnerScale, 12 * runnerScale, 0, 0, Math.PI * 2);
+          ctx.ellipse(playerX, playerY + 75, 40 * runnerScale, 12 * runnerScale, 0, 0, Math.PI * 2);
           ctx.fill();
 
           // Runner Body (Orange Jersey with number 127, Blue shorts, brown hair ponytail)
@@ -364,83 +380,35 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     };
   }, [lane, isJumping, isSliding, hasBoost, hasShield]);
 
-  // Finish run after reaching goal or manual trigger
-  const handleFinishRun = () => {
-    playButtonClick();
-    playVictorySound();
-    onGameOver(score, 3);
-  };
-
   return (
     <div className="relative h-[calc(100vh-70px)] w-full bg-[#58b3ff] overflow-hidden select-none">
       {/* Canvas Game Render */}
       <canvas
         ref={canvasRef}
-        width={600}
-        height={800}
-        className="w-full h-full object-cover touch-none"
+        className="w-full h-full touch-none"
       />
 
       {/* Floating HUD Top Banner */}
-      <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none z-20">
-        {/* Left Health Badge */}
-        <div className="bg-[#e8eff1]/90 backdrop-blur-md px-4 py-2 rounded-full border-4 border-[#0057c1] shadow-lg flex items-center gap-2">
-          <span className="material-symbols-outlined text-red-500 text-2xl symbol-filled animate-pulse">
-            favorite
-          </span>
-          <span className="font-extrabold text-[#0057c1] text-lg sm:text-xl">
-            KID-RUN!
-          </span>
-        </div>
-
-        {/* Center Combo Overlay */}
-        <div className="bg-[#994700] text-white px-6 py-2 rounded-full border-4 border-white shadow-[0_6px_0_0_#5c2800] flex flex-col items-center animate-bounce">
-          <span className="font-bold text-[11px] uppercase tracking-wider text-amber-200">
-            COMBO
-          </span>
-          <span className="font-extrabold text-2xl sm:text-3xl leading-none">
-            x{combo}
-          </span>
-        </div>
-
+      <div className="absolute top-4 left-4 right-4 pointer-events-none z-20">
         {/* Right Score Badge */}
-        <div className="bg-[#006ef1] text-white px-5 py-2 rounded-full border-4 border-white shadow-lg flex items-center gap-1.5">
+        <div className="absolute right-0 bg-[#006ef1] text-white px-5 py-2 rounded-full border-4 border-white shadow-lg flex items-center gap-1.5">
           <span className="font-bold text-xs uppercase text-blue-100">SCORE</span>
           <span className="font-extrabold text-xl sm:text-2xl">{score.toLocaleString()}</span>
         </div>
       </div>
 
-      {/* On-screen Controls Overlay (Touch & Quick Actions) */}
-      <div className="absolute bottom-28 left-4 z-20 flex flex-col gap-3">
-        <button
-          onClick={() => {
-            playButtonClick();
-            setHasShield(true);
-          }}
-          className={`rounded-full p-3.5 border-4 border-white shadow-lg transition-transform active:scale-90 ${
-            hasShield ? 'bg-[#20b900] text-white ring-4 ring-green-300' : 'bg-[#ff7a00] text-white'
-          }`}
-          title="Shield Boost"
-        >
-          <span className="material-symbols-outlined text-2xl sm:text-3xl symbol-filled">
-            bolt
-          </span>
-        </button>
-
-        <button
-          onClick={() => setShowWebcam(!showWebcam)}
-          className="bg-[#0057c1] text-white rounded-full p-3.5 border-4 border-white shadow-lg transition-transform active:scale-90"
-          title="Toggle Motion Camera"
-        >
-          <span className="material-symbols-outlined text-2xl sm:text-3xl">
-            qr_code_2
-          </span>
-        </button>
+      {/* Combo Overlay (above the track, over the hills) */}
+      <div className="absolute top-[35%] left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#994700] text-white px-6 py-2 rounded-full shadow-[0_6px_0_0_#5c2800] flex flex-col items-center animate-bounce pointer-events-none z-20">
+        <span className="font-bold text-[11px] uppercase tracking-wider text-amber-200">
+          COMBO
+        </span>
+        <span className="font-extrabold text-2xl sm:text-3xl leading-none">
+          x{combo}
+        </span>
       </div>
 
       {/* Picture-in-Picture Motion Camera Feed Container */}
-      {showWebcam && (
-        <div className="absolute bottom-28 right-4 z-20 bg-slate-900 rounded-2xl overflow-hidden w-44 sm:w-56 h-32 sm:h-38 border-4 border-white shadow-2xl flex flex-col items-center justify-center">
+      <div className="absolute top-4 left-4 z-20 bg-slate-900 rounded-2xl overflow-hidden w-44 sm:w-56 h-32 sm:h-38 border-4 border-white shadow-2xl flex flex-col items-center justify-center">
           <video
             ref={videoRef}
             autoPlay
@@ -481,60 +449,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               MOVE TO RUN!
             </p>
           </div>
-        </div>
-      )}
-
-      {/* On-Screen Touch Lane Switches (Mobile Friendly) */}
-      <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-20 flex gap-4">
-        <button
-          onClick={() => {
-            playButtonClick();
-            setLane((l) => Math.max(0, l - 1));
-          }}
-          className="bg-white/90 text-[#0057c1] font-extrabold px-5 py-3 rounded-2xl border-4 border-[#0057c1] shadow-lg active:scale-90"
-        >
-          ◀ LEFT
-        </button>
-        <button
-          onClick={() => {
-            if (!isJumping) {
-              setIsJumping(true);
-              playJumpSound();
-              setTimeout(() => setIsJumping(false), 650);
-            }
-          }}
-          className="bg-[#ff7a00] text-white font-extrabold px-8 py-3 rounded-2xl border-4 border-white shadow-lg active:scale-90 text-lg"
-        >
-          JUMP! ⬆
-        </button>
-        <button
-          onClick={() => {
-            playButtonClick();
-            setLane((l) => Math.min(2, l + 1));
-          }}
-          className="bg-white/90 text-[#0057c1] font-extrabold px-5 py-3 rounded-2xl border-4 border-[#0057c1] shadow-lg active:scale-90"
-        >
-          RIGHT ▶
-        </button>
-      </div>
-
-      {/* Pause Button & Quick Finish */}
-      <div className="absolute top-20 right-4 z-30 flex items-center gap-2">
-        <button
-          onClick={handleFinishRun}
-          className="bg-[#20b900] text-white font-extrabold px-4 py-2 rounded-full border-2 border-white shadow-md hover:scale-105 active:scale-95 transition-all text-xs"
-        >
-          Finish Run!
-        </button>
-        <button
-          onClick={() => {
-            playButtonClick();
-            onPause();
-          }}
-          className="bg-[#0057c1] text-white rounded-full p-2.5 border-2 border-white shadow-md active:scale-90"
-        >
-          <span className="material-symbols-outlined text-2xl">pause</span>
-        </button>
       </div>
     </div>
   );
