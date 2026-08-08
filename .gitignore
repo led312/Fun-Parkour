@@ -9,3 +9,7 @@ coverage/
 
 # User account data (registered via the auth server)
 data/user.json
+
+# Pose model export artifacts (regenerate via scripts/export_pose_model.py)
+.venv-pose/
+yolo26n-pose.pt
