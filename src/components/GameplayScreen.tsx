@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { playCoinSound, playJumpSound, playButtonClick } from '../utils/audio';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { playCoinSound, playJumpSound, playVictorySound } from '../utils/audio';
+import { usePoseControl } from '../hooks/usePoseControl';
+import { PoseBaseline } from '../utils/poseDetector';
 
 interface GameplayScreenProps {
   onGameOver: (finalScore: number, starsEarned: number) => void;
   onPause: () => void;
+  poseBaseline?: PoseBaseline | null;
 }
 
 interface Obstacle {
@@ -16,6 +19,7 @@ interface Obstacle {
 
 export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   onGameOver,
+  poseBaseline = null,
 }) => {
   const [score, setScore] = useState(2100);
   const [combo, setCombo] = useState(5);
@@ -25,14 +29,22 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [hasShield, setHasShield] = useState(false);
   const [hasBoost, setHasBoost] = useState(false);
   const [webcamActive, setWebcamActive] = useState(false);
+  const [shieldCharges, setShieldCharges] = useState(3);
+  const [shieldRemaining, setShieldRemaining] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const skeletonCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const obstaclesRef = useRef<Obstacle[]>([]);
   const frameRef = useRef<number>(0);
   const nextIdRef = useRef<number>(1);
   const scoreRef = useRef<number>(score);
   const gameOverRef = useRef<boolean>(false);
+  const jumpingRef = useRef(false);
+  const slidingRef = useRef(false);
+  const hasShieldRef = useRef(false);
+  const shieldChargesRef = useRef(3);
+  const shieldEndRef = useRef(0);
 
   // Keep a live copy of score so the game loop can report it on game over
   useEffect(() => {
@@ -42,6 +54,19 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   // Match canvas resolution to its displayed size so nothing is cropped
   useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
+    const resize = () => {
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+
+  // Match skeleton overlay resolution to its displayed size
+  useEffect(() => {
+    const canvas = skeletonCanvasRef.current;
     if (!canvas) return;
     const resize = () => {
       canvas.width = canvas.clientWidth;
@@ -73,6 +98,67 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     };
   }, []);
 
+  // Shared action triggers (keyboard + pose control)
+  const triggerJump = useCallback(() => {
+    if (jumpingRef.current) return;
+    jumpingRef.current = true;
+    setIsJumping(true);
+    playJumpSound();
+    setTimeout(() => {
+      jumpingRef.current = false;
+      setIsJumping(false);
+    }, 650);
+  }, []);
+
+  const triggerSlide = useCallback(() => {
+    if (slidingRef.current) return;
+    slidingRef.current = true;
+    setIsSliding(true);
+    setTimeout(() => {
+      slidingRef.current = false;
+      setIsSliding(false);
+    }, 600);
+  }, []);
+
+  // Shield: 3 free charges per run, each lasts 10s and blocks one hit
+  const activateShield = useCallback(() => {
+    if (hasShieldRef.current || shieldChargesRef.current <= 0) return;
+    shieldChargesRef.current -= 1;
+    setShieldCharges(shieldChargesRef.current);
+    hasShieldRef.current = true;
+    setHasShield(true);
+    shieldEndRef.current = Date.now() + 10000;
+    playVictorySound();
+  }, []);
+
+  // Shield countdown / expiry
+  useEffect(() => {
+    if (!hasShield) return;
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, shieldEndRef.current - Date.now());
+      setShieldRemaining(Math.ceil(remaining / 1000));
+      if (remaining <= 0) {
+        hasShieldRef.current = false;
+        setHasShield(false);
+      }
+    }, 200);
+    return () => clearInterval(interval);
+  }, [hasShield]);
+
+  // Pose control: webcam gestures drive the same actions as the keyboard.
+  // When the calibration screen captured a baseline, reuse it directly.
+  const poseStatus = usePoseControl(
+    videoRef,
+    skeletonCanvasRef,
+    {
+      onJump: triggerJump,
+      onSlide: triggerSlide,
+      onLane: setLane,
+      onShield: activateShield,
+    },
+    poseBaseline,
+  );
+
   // Keyboard controls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -81,22 +167,17 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
         setLane((prev) => Math.min(2, prev + 1));
       } else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W' || e.key === ' ') {
-        if (!isJumping) {
-          setIsJumping(true);
-          playJumpSound();
-          setTimeout(() => setIsJumping(false), 650);
-        }
+        triggerJump();
       } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
-        if (!isSliding) {
-          setIsSliding(true);
-          setTimeout(() => setIsSliding(false), 600);
-        }
+        triggerSlide();
+      } else if (e.key === 'q' || e.key === 'Q') {
+        activateShield();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isJumping, isSliding]);
+  }, [triggerJump, triggerSlide, activateShield]);
 
   // Game loop & spawner
   useEffect(() => {
@@ -150,7 +231,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
                 // Avoided hurdle by jumping!
                 setScore((s) => s + 30);
               } else if (hasShield) {
+                // Shield absorbs one hit, then breaks
                 obs.collected = true;
+                hasShieldRef.current = false;
                 setHasShield(false);
               } else {
                 // Hit an obstacle: run ends
@@ -313,6 +396,10 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           // Runner Body (Orange Jersey with number 127, Blue shorts, brown hair ponytail)
           ctx.save();
           ctx.translate(playerX, playerY);
+          if (isSliding) {
+            // Squash & stretch crouch pose while sliding
+            ctx.scale(1.15, 0.6);
+          }
 
           // Head / Hair
           ctx.fillStyle = '#8b4513';
@@ -366,6 +453,22 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           ctx.fillText('GO!', 0, -125);
 
           ctx.restore();
+
+          // Shield bubble around the runner while active
+          if (hasShield) {
+            const pulse = 1 + Math.sin(Date.now() / 150) * 0.05;
+            ctx.save();
+            ctx.translate(playerX, playerY - 60);
+            ctx.scale(pulse, pulse);
+            ctx.strokeStyle = 'rgba(127, 212, 255, 0.9)';
+            ctx.fillStyle = 'rgba(127, 212, 255, 0.15)';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(0, 0, 90, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+          }
         }
       }
 
@@ -422,26 +525,35 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               <span className="material-symbols-outlined text-3xl text-emerald-400 animate-bounce">
                 accessibility_new
               </span>
-              <p className="font-bold text-[10px] uppercase mt-1">Simulating Motion Tracking</p>
+              <p className="font-bold text-[10px] uppercase mt-1">Camera Off - Keyboard Mode</p>
             </div>
           )}
 
           <div className="scanline absolute inset-0 pointer-events-none" />
 
-          {/* Stick Figure Skeleton Motion Overlay */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <svg className="w-16 h-24 stroke-emerald-400 stroke-2 fill-none animate-pulse">
-              <circle cx="32" cy="12" r="8" />
-              <line x1="32" y1="20" x2="32" y2="50" />
-              <line x1="12" y1="30" x2="52" y2="30" />
-              <line x1="32" y1="50" x2="18" y2="80" />
-              <line x1="32" y1="50" x2="46" y2="80" />
-            </svg>
-          </div>
+          {/* Real YOLO26 Pose Skeleton Overlay (keypoints already mirrored) */}
+          <canvas
+            ref={skeletonCanvasRef}
+            className="absolute inset-0 w-full h-full pointer-events-none"
+          />
 
           <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-black/50 px-2 py-0.5 rounded-full">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></div>
-            <span className="text-white text-[9px] font-bold uppercase">GAMEPLAY ACTIVE</span>
+            <div
+              className={`w-2 h-2 rounded-full ${
+                poseStatus === 'active'
+                  ? 'bg-emerald-400 animate-ping'
+                  : poseStatus === 'loading'
+                    ? 'bg-amber-400 animate-pulse'
+                    : 'bg-red-400'
+              }`}
+            ></div>
+            <span className="text-white text-[9px] font-bold uppercase">
+              {poseStatus === 'active'
+                ? 'POSE TRACKING'
+                : poseStatus === 'loading'
+                  ? 'LOADING AI...'
+                  : 'KEYBOARD MODE'}
+            </span>
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 bg-[#106e00]/90 py-1 text-center">
@@ -449,6 +561,30 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               MOVE TO RUN!
             </p>
           </div>
+      </div>
+
+      {/* Shield HUD: remaining free charges + 10s countdown while active */}
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1 pointer-events-none">
+        <div
+          className={`px-4 py-1.5 rounded-full border-4 shadow-lg flex items-center gap-2 transition-colors ${
+            hasShield
+              ? 'bg-[#0057c1] border-[#7fd4ff] text-white'
+              : 'bg-slate-800/80 border-slate-500 text-slate-300'
+          }`}
+        >
+          <span className="material-symbols-outlined text-lg symbol-filled">shield</span>
+          <span className="font-extrabold text-sm uppercase">
+            {hasShield ? `SHIELD ${shieldRemaining}s` : `SHIELD x${shieldCharges}`}
+          </span>
+        </div>
+        {hasShield && (
+          <div className="w-32 h-2 bg-slate-800/70 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#7fd4ff] transition-all duration-200"
+              style={{ width: `${(shieldRemaining / 10) * 100}%` }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
