@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ScreenState, TabState, UserProfile } from './types';
+import { PoseBaseline } from './utils/poseDetector';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { LoginScreen } from './components/LoginScreen';
@@ -29,6 +30,9 @@ export default function App() {
 
   const [lastRunScore, setLastRunScore] = useState(2500);
   const [lastStarsEarned, setLastStarsEarned] = useState(3);
+  // Standing-pose baseline captured on the calibration screen (null = the
+  // game calibrates itself during the first second of play)
+  const [poseBaseline, setPoseBaseline] = useState<PoseBaseline | null>(null);
 
   const handleLoginSuccess = (name: string, email: string, isGuest: boolean) => {
     setUser((prev) => ({
@@ -61,12 +65,9 @@ export default function App() {
     } else if (tab === 'rocket') {
       if (screen === 'LOGIN') {
         setScreen('LOBBY');
-      } else if (screen === 'LOBBY') {
+      } else if (screen === 'LOBBY' || screen === 'RESULTS' || screen === 'SHOP') {
+        // Calibration is mandatory before every run
         setScreen('CALIBRATION');
-      } else if (screen === 'CALIBRATION') {
-        setScreen('GAMEPLAY');
-      } else if (screen === 'RESULTS' || screen === 'SHOP') {
-        setScreen('GAMEPLAY');
       }
     } else if (tab === 'shield') {
       setIsPauseOpen(true);
@@ -100,19 +101,22 @@ export default function App() {
           <LobbyScreen
             user={user}
             onStartCalibration={() => setScreen('CALIBRATION')}
-            onQuickStart={() => setScreen('GAMEPLAY')}
           />
         )}
 
         {screen === 'CALIBRATION' && (
           <CalibrationScreen
-            onCalibrationComplete={() => setScreen('GAMEPLAY')}
+            onCalibrationComplete={(baseline) => {
+              setPoseBaseline(baseline);
+              setScreen('GAMEPLAY');
+            }}
             onPause={() => setIsPauseOpen(true)}
           />
         )}
 
         {screen === 'GAMEPLAY' && (
           <GameplayScreen
+            poseBaseline={poseBaseline}
             onGameOver={handleGameOver}
             onPause={() => setIsPauseOpen(true)}
           />
@@ -122,7 +126,7 @@ export default function App() {
           <ResultsScreen
             score={lastRunScore}
             starsEarned={lastStarsEarned}
-            onReplay={() => setScreen('GAMEPLAY')}
+            onReplay={() => setScreen('CALIBRATION')}
             onHome={() => setScreen('LOBBY')}
           />
         )}

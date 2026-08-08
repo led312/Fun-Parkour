@@ -5,13 +5,11 @@ import { playButtonClick } from '../utils/audio';
 interface LobbyScreenProps {
   user: UserProfile;
   onStartCalibration: () => void;
-  onQuickStart: () => void;
 }
 
 export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   user,
   onStartCalibration,
-  onQuickStart,
 }) => {
   const [showToast, setShowToast] = useState(true);
   const [cameraActive, setCameraActive] = useState(false);
@@ -82,7 +80,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
           />
         </div>
 
-        {/* Start Game Action Buttons */}
+        {/* Start Game Action Button (calibration is mandatory) */}
         <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md">
           <button
             onClick={() => {
@@ -97,18 +95,6 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             <span className="font-extrabold text-2xl sm:text-3xl tracking-wider">
               START
             </span>
-          </button>
-
-          <button
-            onClick={() => {
-              playButtonClick();
-              onQuickStart();
-            }}
-            className="bg-[#0057c1] hover:brightness-110 active:scale-95 text-white rounded-2xl px-5 py-4 flex items-center justify-center gap-2 border-b-8 border-[#001a43] shadow-xl transition-all font-bold text-base sm:text-lg"
-            title="Jump straight into the run!"
-          >
-            <span className="material-symbols-outlined text-2xl symbol-filled">bolt</span>
-            <span>Quick Run</span>
           </button>
         </div>
       </div>

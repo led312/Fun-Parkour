@@ -1,20 +1,80 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { playBeepSound, playButtonClick, playVictorySound } from '../utils/audio';
+import {
+  playBeepSound,
+  playButtonClick,
+  playCoinSound,
+  playVictorySound,
+} from '../utils/audio';
+import {
+  averageBaseline,
+  detectPose,
+  drawSkeleton,
+  Keypoint,
+  KP,
+  measureBaseline,
+  measureShoulderY,
+  PoseBaseline,
+} from '../utils/poseDetector';
 
 interface CalibrationScreenProps {
-  onCalibrationComplete: () => void;
+  onCalibrationComplete: (baseline: PoseBaseline | null) => void;
   onPause: () => void;
 }
+
+// loading: model warming up; searching: no person detected yet;
+// calibrating: sampling the standing baseline; testing: walking through each
+// game gesture one by one; ready: everything detected, good to go;
+// unavailable: webcam/model failed, keyboard fallback
+type CalibStatus =
+  | 'loading'
+  | 'searching'
+  | 'calibrating'
+  | 'testing'
+  | 'ready'
+  | 'unavailable';
+
+type GestureId = 'jump' | 'squat' | 'left' | 'right' | 'jack';
+
+interface GestureStep {
+  id: GestureId;
+  label: string;
+  hint: string;
+  icon: string;
+}
+
+// Every move the parkour game needs, tested in order during calibration
+const GESTURE_STEPS: GestureStep[] = [
+  { id: 'jump', label: 'JUMP!', hint: 'Jump up high!', icon: 'arrow_upward' },
+  { id: 'squat', label: 'SQUAT!', hint: 'Squat down low!', icon: 'arrow_downward' },
+  { id: 'left', label: 'GO LEFT!', hint: 'Step to your left!', icon: 'arrow_back' },
+  { id: 'right', label: 'GO RIGHT!', hint: 'Step to your right!', icon: 'arrow_forward' },
+  { id: 'jack', label: 'JUMPING JACK!', hint: 'Arms up & legs wide - shield power!', icon: 'shield' },
+];
+
+const FRAME_MS = 80;
+const SAMPLE_MS = 1000; // hold still for 1s to capture the standing baseline
+const CONF = 0.5;
+
+const ok = (kp: Keypoint | undefined): kp is Keypoint => !!kp && kp.score > CONF;
 
 export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
   onCalibrationComplete,
   onPause,
 }) => {
-  const [progress, setProgress] = useState(15);
-  const [isAligned, setIsAligned] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [status, setStatus] = useState<CalibStatus>('loading');
+  const [stepIndex, setStepIndex] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [webcamActive, setWebcamActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const skeletonCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const samplesRef = useRef<PoseBaseline[]>([]);
+  const sampleStartRef = useRef(0);
+  const baselineRef = useRef<PoseBaseline | null>(null);
+  const prevHipYRef = useRef<number | null>(null);
+  const squatFramesRef = useRef(0);
+
+  const isAligned = status === 'ready';
 
   useEffect(() => {
     // Try auto-enabling webcam for pose tracking experience
@@ -27,6 +87,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
       })
       .catch(() => {
         setWebcamActive(false);
+        setStatus('unavailable');
       });
 
     return () => {
@@ -37,11 +98,137 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
     };
   }, []);
 
+  // Match skeleton overlay resolution to its displayed size
+  useEffect(() => {
+    const canvas = skeletonCanvasRef.current;
+    if (!canvas) return;
+    const resize = () => {
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+
+  // Did the current frame perform the requested gesture? (same thresholds as
+  // the in-game gesture state machine). m may be null when the hips lose
+  // confidence (e.g. mid-squat); squat/jack don't need it.
+  const detectGesture = (
+    id: GestureId,
+    kps: Keypoint[],
+    m: PoseBaseline | null,
+    b: PoseBaseline,
+  ): boolean => {
+    switch (id) {
+      case 'jump': {
+        if (!m) return false;
+        const risingFast =
+          prevHipYRef.current !== null && prevHipYRef.current - m.hipY > 0.18 * b.torso;
+        const aboveBaseline = m.hipY < b.hipY - 0.22 * b.torso;
+        return risingFast || aboveBaseline;
+      }
+      case 'squat': {
+        // Shoulders stay visible mid-squat while hips often lose confidence
+        const shoulderY = measureShoulderY(kps);
+        if (shoulderY !== null && shoulderY > b.shoulderY + 0.3 * b.torso) {
+          squatFramesRef.current += 1;
+        } else {
+          squatFramesRef.current = 0;
+        }
+        return squatFramesRef.current >= 2;
+      }
+      case 'left':
+        return !!m && m.centerX < b.centerX - 0.7 * b.shoulderW;
+      case 'right':
+        return !!m && m.centerX > b.centerX + 0.7 * b.shoulderW;
+      case 'jack': {
+        const nose = kps[KP.NOSE];
+        const lw = kps[KP.LEFT_WRIST];
+        const rw = kps[KP.RIGHT_WRIST];
+        if (!ok(nose) || !ok(lw) || !ok(rw)) return false;
+        return (
+          lw.y < nose.y && rw.y < nose.y && Math.abs(rw.x - lw.x) > 1.5 * b.shoulderW
+        );
+      }
+    }
+  };
+
+  // Real pose calibration loop: detect the player, draw the skeleton, capture
+  // the standing baseline, then verify each game gesture one by one.
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const tick = async () => {
+      if (cancelled) return;
+      const video = videoRef.current;
+      if (video && video.readyState >= 2 && status !== 'ready') {
+        try {
+          const kps = await detectPose(video);
+          if (cancelled) return;
+          const canvas = skeletonCanvasRef.current;
+          if (canvas) drawSkeleton(canvas, video, kps);
+
+          const m = kps ? measureBaseline(kps) : null;
+
+          if (!baselineRef.current) {
+            // Phase 1: standing baseline sampling
+            if (!m) {
+              setStatus(samplesRef.current.length > 0 ? 'calibrating' : 'searching');
+            } else {
+              if (samplesRef.current.length === 0) {
+                sampleStartRef.current = Date.now();
+              }
+              samplesRef.current.push(m);
+              const elapsed = Date.now() - sampleStartRef.current;
+              // Baseline sampling fills the first 20% of the progress bar
+              setProgress(Math.min(20, Math.round((elapsed / SAMPLE_MS) * 20)));
+              if (elapsed >= SAMPLE_MS && samplesRef.current.length >= 3) {
+                baselineRef.current = averageBaseline(samplesRef.current);
+                setStatus('testing');
+                playCoinSound();
+              } else {
+                setStatus('calibrating');
+              }
+            }
+          } else {
+            // Phase 2: gesture checklist (16% per gesture, 5 gestures).
+            // Runs even when hips are lost mid-frame: squat/jack don't need them.
+            const step = GESTURE_STEPS[stepIndex];
+            if (step && kps && detectGesture(step.id, kps, m, baselineRef.current)) {
+              playCoinSound();
+              squatFramesRef.current = 0;
+              const next = stepIndex + 1;
+              setProgress(20 + next * 16);
+              if (next >= GESTURE_STEPS.length) {
+                setStatus('ready');
+                playVictorySound();
+              } else {
+                setStepIndex(next);
+              }
+            }
+            if (m) prevHipYRef.current = m.hipY;
+          }
+        } catch (e) {
+          console.warn('Pose calibration unavailable:', e);
+          if (!cancelled) setStatus('unavailable');
+          return;
+        }
+      }
+      timer = setTimeout(tick, FRAME_MS);
+    };
+
+    tick();
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepIndex, status]);
+
   const handleStartCalibration = () => {
     playButtonClick();
-    setIsAligned(true);
-    setProgress(100);
-    playVictorySound();
 
     let count = 3;
     setCountdown(count);
@@ -55,11 +242,35 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
         clearInterval(interval);
         setCountdown(0);
         setTimeout(() => {
-          onCalibrationComplete();
+          // Pass the captured baseline into gameplay; null = game calibrates
+          // itself (keyboard / no-camera fallback)
+          onCalibrationComplete(baselineRef.current);
         }, 500);
       }
     }, 900);
   };
+
+  const currentStep = status === 'testing' ? GESTURE_STEPS[stepIndex] : null;
+
+  const statusTitle: Record<CalibStatus, string> = {
+    loading: 'LOADING AI...',
+    searching: 'STEP INTO FRAME!',
+    calibrating: 'HOLD STILL...',
+    testing: currentStep?.label ?? '',
+    ready: 'ALL MOVES OK!',
+    unavailable: 'NO CAMERA?',
+  };
+
+  const statusHint: Record<CalibStatus, string> = {
+    loading: 'Warming up the pose detector...',
+    searching: 'Step back so your head and feet are visible!',
+    calibrating: 'Stand straight while we learn your pose!',
+    testing: currentStep?.hint ?? '',
+    ready: 'Every move detected. Getting ready to run...',
+    unavailable: 'No pose tracking - keyboard controls will be used.',
+  };
+
+  const canStart = status === 'ready' || status === 'unavailable';
 
   return (
     <div className="relative h-[calc(100vh-70px)] w-full bg-black flex items-center justify-center overflow-hidden select-none">
@@ -81,6 +292,11 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
           />
         )}
         <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/60 pointer-events-none" />
+        {/* Real-time YOLO26 skeleton overlay (keypoints already mirrored) */}
+        <canvas
+          ref={skeletonCanvasRef}
+          className="absolute inset-0 w-full h-full pointer-events-none"
+        />
       </div>
 
       {/* Main Overlay UI */}
@@ -94,73 +310,49 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
           }`}
         >
           <h2
-            className={`font-extrabold text-2xl sm:text-3xl mb-1 ${
+            className={`font-extrabold text-2xl sm:text-3xl mb-1 flex items-center justify-center gap-2 ${
               isAligned ? 'text-white' : 'text-[#994700]'
             }`}
           >
-            {isAligned ? 'PERFECT!' : 'Step Back!'}
+            {currentStep && (
+              <span className="material-symbols-outlined text-3xl sm:text-4xl symbol-filled">
+                {currentStep.icon}
+              </span>
+            )}
+            {statusTitle[status]}
           </h2>
-          <p className="font-semibold text-base sm:text-lg">
-            {isAligned
-              ? 'Getting ready to run...'
-              : 'Match your hands and feet to the silhouette!'}
-          </p>
+          <p className="font-semibold text-base sm:text-lg">{statusHint[status]}</p>
+
+          {/* Gesture checklist */}
+          {(status === 'testing' || status === 'ready') && (
+            <div className="flex items-center justify-center gap-2 mt-2">
+              {GESTURE_STEPS.map((step, i) => {
+                const done = status === 'ready' || i < stepIndex;
+                const active = status === 'testing' && i === stepIndex;
+                return (
+                  <div
+                    key={step.id}
+                    title={step.label}
+                    className={`w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all ${
+                      done
+                        ? 'bg-[#20b900] border-white text-white'
+                        : active
+                          ? 'bg-white border-[#994700] text-[#994700] animate-pulse'
+                          : 'bg-black/20 border-white/40 text-white/50'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-xl symbol-filled">
+                      {done ? 'check' : step.icon}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Central Silhouette & Body Targets Zone */}
-        <div className="flex-1 flex items-center justify-center relative w-full my-2">
-          <div
-            className={`relative flex items-center justify-center transition-all duration-500 ${
-              isAligned ? 'scale-105' : ''
-            }`}
-          >
-            {/* Outline SVG */}
-            <svg
-              className={`w-[75vw] h-[50vh] max-w-md ${
-                isAligned ? 'drop-shadow-[0_0_35px_#2ae500]' : 'animate-pulse-glow'
-              }`}
-              fill="none"
-              viewBox="0 0 200 400"
-            >
-              <path
-                d="M100 20C115 20 125 35 125 50C125 65 115 80 100 80C85 80 75 65 75 50C75 35 85 20 100 20ZM100 90C80 90 60 100 50 120L30 180C25 195 35 210 50 210C60 210 70 200 75 190L85 140V300C85 320 70 340 50 340C40 340 35 350 35 360C35 375 50 390 70 390H130C150 390 165 375 165 360C165 350 160 340 150 340C130 340 115 320 115 300V140L125 190C130 200 140 210 150 210C165 210 175 195 170 180L150 120C140 100 120 90 100 90Z"
-                fill={isAligned ? '#79ff5b' : '#20b900'}
-                fillOpacity={isAligned ? 0.6 : 0.25}
-                stroke={isAligned ? '#ffffff' : '#79ff5b'}
-                strokeDasharray={isAligned ? '0' : '8 8'}
-                strokeWidth="5"
-              />
-            </svg>
-
-            {/* Left Hand Indicator */}
-            <div className="absolute top-[28%] left-2 sm:left-4 bg-[#0057c1] text-white rounded-full p-3.5 sm:p-4 border-4 border-white shadow-[0_4px_0_0_#001a43] animate-bounce">
-              <span className="material-symbols-outlined text-3xl sm:text-4xl symbol-filled">
-                back_hand
-              </span>
-            </div>
-
-            {/* Right Hand Indicator */}
-            <div className="absolute top-[28%] right-2 sm:right-4 bg-[#0057c1] text-white rounded-full p-3.5 sm:p-4 border-4 border-white shadow-[0_4px_0_0_#001a43] animate-bounce">
-              <span className="material-symbols-outlined text-3xl sm:text-4xl symbol-filled">
-                back_hand
-              </span>
-            </div>
-
-            {/* Feet Indicators */}
-            <div className="absolute bottom-6 flex gap-16 sm:gap-24">
-              <div className="bg-[#0057c1] text-white rounded-full p-3.5 sm:p-4 border-4 border-white shadow-[0_4px_0_0_#001a43] animate-pulse">
-                <span className="material-symbols-outlined text-3xl sm:text-4xl symbol-filled">
-                  footprint
-                </span>
-              </div>
-              <div className="bg-[#0057c1] text-white rounded-full p-3.5 sm:p-4 border-4 border-white shadow-[0_4px_0_0_#001a43] animate-pulse">
-                <span className="material-symbols-outlined text-3xl sm:text-4xl symbol-filled">
-                  footprint
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
+        {/* Spacer: the live YOLO skeleton on the camera feed is the only body guide */}
+        <div className="flex-1 w-full my-2" />
 
         {/* Bottom Progress Bar & Calibration Action */}
         <div className="w-full space-y-3 pb-2">
@@ -177,15 +369,25 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
 
           <button
             onClick={handleStartCalibration}
-            disabled={countdown !== null}
+            disabled={countdown !== null || !canStart}
             className={`w-full py-4 rounded-2xl font-extrabold text-2xl border-b-8 transition-all shadow-xl ${
               isAligned
                 ? 'bg-[#20b900] text-white border-[#064100]'
-                : 'bg-[#ff7a00] hover:brightness-110 text-[#5c2800] border-[#753400] active:scale-95'
+                : canStart
+                  ? 'bg-[#ff7a00] hover:brightness-110 text-[#5c2800] border-[#753400] active:scale-95'
+                  : 'bg-[#b8c2c6] text-[#5a6a70] border-[#8c7263] cursor-not-allowed'
             }`}
           >
             {countdown === null ? (
-              "I'M READY!"
+              canStart ? (
+                status === 'unavailable' ? (
+                  'START WITH KEYBOARD'
+                ) : (
+                  "I'M READY!"
+                )
+              ) : (
+                'FINISH THE MOVES FIRST!'
+              )
             ) : countdown > 0 ? (
               `LET'S GO! ${countdown}...`
             ) : (
