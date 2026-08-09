@@ -28,14 +28,13 @@
 # 安装依赖
 npm install
 
-# 启动前端开发服务器（端口 3000）
+# 一条命令同时启动前端（:3000）和后端 API（:3001）
 npm run dev
-
-# 另开一个终端，启动后端服务（登录/注册 API）
-npm run server
 ```
 
-打开 http://localhost:3000 ，允许摄像头权限后即可游玩。
+打开 http://localhost:3000 ，允许摄像头权限后即可游玩。前端通过 Vite 代理将 `/api` 请求转发到后端。
+
+如需单独启动：前端 `npm run dev:web`，后端 `npm run server`。
 
 环境变量（参考 `.env.example`）：
 
