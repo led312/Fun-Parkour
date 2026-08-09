@@ -52,6 +52,7 @@ const GESTURE_STEPS: GestureStep[] = [
 ];
 
 const FRAME_MS = 80;
+const RETRY_MS = 3000; // delay before re-trying after a pose-model load failure
 const SAMPLE_MS = 1000; // hold still for 1s to capture the standing baseline
 const CONF = 0.5;
 
@@ -211,8 +212,13 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
             if (m) prevHipYRef.current = m.hipY;
           }
         } catch (e) {
-          console.warn('Pose calibration unavailable:', e);
-          if (!cancelled) setStatus('unavailable');
+          // Model load can fail transiently (e.g. slow CDN fallback); keep
+          // retrying on a slower cadence instead of giving up for good.
+          console.warn('Pose calibration unavailable, retrying:', e);
+          if (!cancelled) {
+            setStatus('unavailable');
+            timer = setTimeout(tick, RETRY_MS);
+          }
           return;
         }
       }
@@ -258,7 +264,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
     calibrating: 'HOLD STILL...',
     testing: currentStep?.label ?? '',
     ready: 'ALL MOVES OK!',
-    unavailable: 'NO CAMERA?',
+    unavailable: 'AI UNAVAILABLE',
   };
 
   const statusHint: Record<CalibStatus, string> = {
@@ -267,7 +273,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
     calibrating: 'Stand straight while we learn your pose!',
     testing: currentStep?.hint ?? '',
     ready: 'Every move detected. Getting ready to run...',
-    unavailable: 'No pose tracking - keyboard controls will be used.',
+    unavailable: 'Pose AI failed to load. Retrying - keyboard controls work too.',
   };
 
   const canStart = status === 'ready' || status === 'unavailable';

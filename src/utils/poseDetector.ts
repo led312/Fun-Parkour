@@ -157,13 +157,43 @@ export function drawSkeleton(
 let sessionPromise: Promise<ort.InferenceSession> | null = null;
 let inputCanvas: HTMLCanvasElement | null = null;
 
+// Pinned to the installed onnxruntime-web version; used only when the locally
+// served wasm binary fails to compile (e.g. a truncated copy in node_modules
+// or a network filter mangling the 26MB download).
+const ORT_VERSION = '1.27.0';
+const ORT_CDN_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist`;
+
+function createSession(wasmPaths: { mjs: string; wasm: string }) {
+  ort.env.wasm.wasmPaths = wasmPaths;
+  // Multi-threaded wasm needs SharedArrayBuffer, i.e. cross-origin isolation
+  // (COOP/COEP headers, set in vite.config). Without it, stay single-threaded.
+  ort.env.wasm.numThreads = globalThis.crossOriginIsolated
+    ? Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1))
+    : 1;
+  return ort.InferenceSession.create(MODEL_URL, {
+    // WebGPU (Chrome/Edge, Safari 26+) is much faster than wasm for YOLO;
+    // ORT falls back to wasm automatically when WebGPU is unavailable.
+    executionProviders: ['webgpu', 'wasm'],
+    graphOptimizationLevel: 'all',
+  });
+}
+
 export function loadPoseModel(): Promise<ort.InferenceSession> {
   if (!sessionPromise) {
-    ort.env.wasm.wasmPaths = { mjs: ortWasmModuleUrl, wasm: ortWasmBinaryUrl };
-    ort.env.wasm.numThreads = 1; // avoids COOP/COEP cross-origin-isolation requirement
-    sessionPromise = ort.InferenceSession.create(MODEL_URL, {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all',
+    sessionPromise = createSession({
+      mjs: ortWasmModuleUrl,
+      wasm: ortWasmBinaryUrl,
+    }).catch((e) => {
+      console.warn('Local ORT wasm failed, retrying with CDN copy:', e);
+      return createSession({
+        mjs: `${ORT_CDN_BASE}/ort-wasm-simd-threaded.jsep.mjs`,
+        wasm: `${ORT_CDN_BASE}/ort-wasm-simd-threaded.jsep.wasm`,
+      });
+    });
+    // A rejected session must not be cached forever: clear it so the next
+    // detectPose() call retries from scratch.
+    sessionPromise.catch(() => {
+      sessionPromise = null;
     });
   }
   return sessionPromise;

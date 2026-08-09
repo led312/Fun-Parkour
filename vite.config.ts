@@ -21,6 +21,18 @@ export default defineConfig(() => {
       proxy: {
         '/api': 'http://localhost:3001',
       },
+      // Cross-origin isolation: enables SharedArrayBuffer so onnxruntime-web's
+      // wasm backend can run multi-threaded (much faster pose inference).
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'credentialless',
+      },
+    },
+    preview: {
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'credentialless',
+      },
     },
   };
 });

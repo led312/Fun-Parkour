@@ -25,6 +25,7 @@ export type PoseStatus = 'loading' | 'active' | 'unavailable';
 
 const CONF = 0.5;
 const FRAME_MS = 80; // ~12 FPS inference throttle
+const RETRY_MS = 3000; // delay before re-trying after a pose-model load failure
 const BASELINE_MS = 1000; // stand still for the first second to calibrate
 const JUMP_COOLDOWN_MS = 700;
 const SLIDE_COOLDOWN_MS = 800;
@@ -160,8 +161,13 @@ export function usePoseControl(
           if (canvas) drawSkeleton(canvas, video, kps);
         } catch (e) {
           console.warn('Pose detection unavailable, keyboard fallback:', e);
-          if (!cancelled) setStatus('unavailable');
-          return; // stop the loop; keyboard still works
+          if (!cancelled) {
+            setStatus('unavailable');
+            // Keep retrying on a slow cadence: a failed session is not
+            // cached, so a later tick can still bring pose control back.
+            timer = setTimeout(tick, RETRY_MS);
+          }
+          return;
         }
       }
       timer = setTimeout(tick, FRAME_MS);
