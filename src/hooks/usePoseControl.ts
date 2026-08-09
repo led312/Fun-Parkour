@@ -23,7 +23,6 @@ export interface PoseControlHandlers {
 
 export type PoseStatus = 'loading' | 'active' | 'unavailable';
 
-const CONF = 0.5;
 const FRAME_MS = 80; // ~12 FPS inference throttle
 const RETRY_MS = 3000; // delay before re-trying after a pose-model load failure
 const BASELINE_MS = 1000; // stand still for the first second to calibrate
@@ -31,7 +30,9 @@ const JUMP_COOLDOWN_MS = 700;
 const SLIDE_COOLDOWN_MS = 800;
 const SHIELD_COOLDOWN_MS = 2000;
 
-const ok = (kp: Keypoint | undefined): kp is Keypoint => !!kp && kp.score > CONF;
+// Fast-moving wrists get lower model scores than static keypoints, so the
+// jumping-jack check uses a looser confidence cut than the usual 0.5.
+const wristOk = (kp: Keypoint | undefined): kp is Keypoint => !!kp && kp.score > 0.3;
 
 export function usePoseControl(
   videoRef: RefObject<HTMLVideoElement | null>,
@@ -52,6 +53,7 @@ export function usePoseControl(
   const lastSlideRef = useRef(0);
   const lastShieldRef = useRef(0);
   const squatFramesRef = useRef(0);
+  const jackFramesRef = useRef(0);
   const laneRef = useRef(1);
 
   useEffect(() => {
@@ -60,14 +62,19 @@ export function usePoseControl(
     let calibrationStart = 0;
 
     const isJumpingJack = (kps: Keypoint[], b: PoseBaseline): boolean => {
-      const nose = kps[KP.NOSE];
       const lw = kps[KP.LEFT_WRIST];
       const rw = kps[KP.RIGHT_WRIST];
-      if (!ok(nose) || !ok(lw) || !ok(rw)) return false;
-      // Both wrists above the nose and spread wide (arms up & out)
-      const armsUp = lw.y < nose.y && rw.y < nose.y;
-      const armsWide = Math.abs(rw.x - lw.x) > 1.5 * b.shoulderW;
-      return armsUp && armsWide;
+      if (!wristOk(lw) || !wristOk(rw)) {
+        jackFramesRef.current = 0;
+        return false;
+      }
+      // Arms raised clearly above the (baseline) shoulder line and spread
+      // wide. Referenced to the standing baseline instead of the nose, so it
+      // also works mid-jump or mid-squat. Needs 2 consecutive frames to fire.
+      const armsUp = lw.y < b.shoulderY - 0.2 * b.torso && rw.y < b.shoulderY - 0.2 * b.torso;
+      const armsWide = Math.abs(rw.x - lw.x) > 1.3 * b.shoulderW;
+      jackFramesRef.current = armsUp && armsWide ? jackFramesRef.current + 1 : 0;
+      return jackFramesRef.current >= 2;
     };
 
     const processFrame = (kps: Keypoint[] | null) => {

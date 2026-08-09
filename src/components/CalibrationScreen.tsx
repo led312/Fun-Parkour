@@ -54,9 +54,10 @@ const GESTURE_STEPS: GestureStep[] = [
 const FRAME_MS = 80;
 const RETRY_MS = 3000; // delay before re-trying after a pose-model load failure
 const SAMPLE_MS = 1000; // hold still for 1s to capture the standing baseline
-const CONF = 0.5;
 
-const ok = (kp: Keypoint | undefined): kp is Keypoint => !!kp && kp.score > CONF;
+// Fast-moving wrists get lower model scores than static keypoints, so the
+// jumping-jack check uses a looser confidence cut than the usual 0.5.
+const wristOk = (kp: Keypoint | undefined): kp is Keypoint => !!kp && kp.score > 0.3;
 
 export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
   onCalibrationComplete,
@@ -74,6 +75,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
   const baselineRef = useRef<PoseBaseline | null>(null);
   const prevHipYRef = useRef<number | null>(null);
   const squatFramesRef = useRef(0);
+  const jackFramesRef = useRef(0);
 
   const isAligned = status === 'ready';
 
@@ -144,13 +146,19 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
       case 'right':
         return !!m && m.centerX > b.centerX + 0.7 * b.shoulderW;
       case 'jack': {
-        const nose = kps[KP.NOSE];
         const lw = kps[KP.LEFT_WRIST];
         const rw = kps[KP.RIGHT_WRIST];
-        if (!ok(nose) || !ok(lw) || !ok(rw)) return false;
-        return (
-          lw.y < nose.y && rw.y < nose.y && Math.abs(rw.x - lw.x) > 1.5 * b.shoulderW
-        );
+        if (!wristOk(lw) || !wristOk(rw)) {
+          jackFramesRef.current = 0;
+          return false;
+        }
+        // Arms raised clearly above the baseline shoulder line and spread
+        // wide; needs 2 consecutive frames so a single blurry frame can't
+        // pass or fail the check on its own.
+        const armsUp = lw.y < b.shoulderY - 0.2 * b.torso && rw.y < b.shoulderY - 0.2 * b.torso;
+        const armsWide = Math.abs(rw.x - lw.x) > 1.3 * b.shoulderW;
+        jackFramesRef.current = armsUp && armsWide ? jackFramesRef.current + 1 : 0;
+        return jackFramesRef.current >= 2;
       }
     }
   };
@@ -200,6 +208,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
             if (step && kps && detectGesture(step.id, kps, m, baselineRef.current)) {
               playCoinSound();
               squatFramesRef.current = 0;
+              jackFramesRef.current = 0;
               const next = stepIndex + 1;
               setProgress(20 + next * 16);
               if (next >= GESTURE_STEPS.length) {
