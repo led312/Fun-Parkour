@@ -56,11 +56,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   };
 
-  const handleGuest = () => {
-    playButtonClick();
-    onLoginSuccess('Guest Runner', '', true);
-  };
-
   return (
     <div className="relative flex flex-col items-center justify-center px-4 py-8 min-h-[calc(100vh-70px)]">
       {/* Decorative Floating Stars */}
@@ -212,23 +207,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
           </button>
         </form>
-
-        {/* Divider */}
-        <div className="flex items-center my-6">
-          <div className="flex-grow border-t-4 border-[#e0c0af]"></div>
-          <span className="px-4 font-extrabold text-sm text-[#584235]">OR</span>
-          <div className="flex-grow border-t-4 border-[#e0c0af]"></div>
-        </div>
-
-        {/* Alternative Login */}
-        <button
-          type="button"
-          onClick={handleGuest}
-          className="w-full py-3.5 sm:py-4 rounded-2xl border-4 border-[#0057c1] text-[#0057c1] font-bold text-lg flex items-center justify-center gap-2 hover:bg-[#d9e2ff] active:scale-95 transition-all bg-white"
-        >
-          <span className="material-symbols-outlined">person_outline</span>
-          <span>PLAY AS GUEST</span>
-        </button>
       </div>
 
       {/* Parental Note Footer */}

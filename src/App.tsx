@@ -60,12 +60,14 @@ export default function App() {
 
   const handleTabSelect = (tab: TabState) => {
     setActiveTab(tab);
+    // Login is mandatory: ignore navigation while on the login screen
+    if (screen === 'LOGIN') {
+      return;
+    }
     if (tab === 'bolt') {
       setScreen('SHOP');
     } else if (tab === 'rocket') {
-      if (screen === 'LOGIN') {
-        setScreen('LOBBY');
-      } else if (screen === 'LOBBY' || screen === 'RESULTS' || screen === 'SHOP') {
+      if (screen === 'LOBBY' || screen === 'RESULTS' || screen === 'SHOP') {
         // Calibration is mandatory before every run
         setScreen('CALIBRATION');
       }
@@ -80,7 +82,11 @@ export default function App() {
       <Header
         screen={screen}
         score={user.score}
-        onProfileClick={() => setScreen('SHOP')}
+        onProfileClick={() => {
+          if (screen !== 'LOGIN') {
+            setScreen('SHOP');
+          }
+        }}
         onTitleClick={() => {
           if (screen !== 'LOGIN') {
             setScreen('LOBBY');
