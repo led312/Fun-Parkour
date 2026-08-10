@@ -204,7 +204,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     // Queued spawns: coin strings trickle in one coin at a time (same lane)
     const spawnQueue: { type: Obstacle['type']; lane: number; at: number }[] = [];
     let scoreInterval = setInterval(() => {
-      setScore((s) => s + 5);
+      setScore((s) => s + 20);
     }, 100);
 
     const runLoop = () => {
@@ -243,7 +243,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       }
 
       // Update positions
-      const speed = 0.9;
+      const speed = 0.6;
       obstaclesRef.current.forEach((obs) => {
         obs.z -= speed;
       });
