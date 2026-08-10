@@ -55,6 +55,8 @@ export function usePoseControl(
   const lastShieldRef = useRef(0);
   const squatFramesRef = useRef(0);
   const jackFramesRef = useRef(0);
+  const jumpArmedRef = useRef(true);
+  const squatArmedRef = useRef(true);
   const laneRef = useRef(1);
 
   useEffect(() => {
@@ -110,12 +112,25 @@ export function usePoseControl(
         return;
       }
 
-      // --- Squat: shoulders clearly below baseline for 2+ frames.
-      // Shoulders stay visible mid-squat; hips often lose confidence then. ---
+      // --- Squat: shoulders clearly below baseline for 2+ frames, then the
+      // detector must see the player stand back up before it can fire again.
+      // Edge-triggered: a slightly off baseline can't auto-slide forever. ---
+      if (
+        !squatArmedRef.current &&
+        shoulderY !== null &&
+        shoulderY < b.shoulderY + 0.15 * b.torso
+      ) {
+        squatArmedRef.current = true;
+      }
       if (shoulderY !== null && shoulderY > b.shoulderY + 0.3 * b.torso) {
         squatFramesRef.current += 1;
-        if (squatFramesRef.current >= 2 && now - lastSlideRef.current > SLIDE_COOLDOWN_MS) {
+        if (
+          squatArmedRef.current &&
+          squatFramesRef.current >= 2 &&
+          now - lastSlideRef.current > SLIDE_COOLDOWN_MS
+        ) {
           lastSlideRef.current = now;
+          squatArmedRef.current = false;
           squatFramesRef.current = 0;
           handlersRef.current.onSlide();
         }
@@ -149,12 +164,22 @@ export function usePoseControl(
       // Jump needs the hips; skip it on frames where hips are lost
       if (!m) return;
 
-      // --- Jump: hips rising fast / clearly above baseline ---
+      // --- Jump: edge-triggered, not level-triggered. The detector re-arms
+      // only after the hips return near the baseline, so a slightly off
+      // baseline can't auto-fire a jump every cooldown. ---
+      if (!jumpArmedRef.current && m.hipY > b.hipY - 0.1 * b.torso) {
+        jumpArmedRef.current = true;
+      }
       const risingFast =
         prevHipYRef.current !== null && prevHipYRef.current - m.hipY > 0.18 * b.torso;
       const aboveBaseline = m.hipY < b.hipY - 0.22 * b.torso;
-      if ((risingFast || aboveBaseline) && now - lastJumpRef.current > JUMP_COOLDOWN_MS) {
+      if (
+        jumpArmedRef.current &&
+        (risingFast || aboveBaseline) &&
+        now - lastJumpRef.current > JUMP_COOLDOWN_MS
+      ) {
         lastJumpRef.current = now;
+        jumpArmedRef.current = false;
         handlersRef.current.onJump();
       }
 
