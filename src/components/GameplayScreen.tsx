@@ -22,7 +22,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   poseBaseline = null,
 }) => {
   const [score, setScore] = useState(2100);
-  const [combo, setCombo] = useState(5);
   const [lane, setLane] = useState<number>(1); // 0, 1, 2
   const [isJumping, setIsJumping] = useState(false);
   const [isSliding, setIsSliding] = useState(false);
@@ -182,27 +181,53 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   // Game loop & spawner
   useEffect(() => {
     let lastSpawn = Date.now();
+    // Queued spawns: coin strings trickle in one coin at a time (same lane)
+    const spawnQueue: { type: Obstacle['type']; lane: number; at: number }[] = [];
     let scoreInterval = setInterval(() => {
       setScore((s) => s + 5);
     }, 100);
 
     const runLoop = () => {
       const now = Date.now();
-      // Spawn items
-      if (now - lastSpawn > 1400) {
-        lastSpawn = now;
-        const types: ('cone' | 'hurdle' | 'coin' | 'bolt')[] = [
-          'coin', 'coin', 'cone', 'hurdle', 'coin', 'bolt',
-        ];
-        const randomType = types[Math.floor(Math.random() * types.length)];
-        const randomLane = Math.floor(Math.random() * 3);
 
+      // Drain queued coin-string spawns
+      while (spawnQueue.length && spawnQueue[0].at <= now) {
+        const item = spawnQueue.shift()!;
         obstaclesRef.current.push({
           id: nextIdRef.current++,
-          lane: randomLane,
+          lane: item.lane,
           z: 100,
-          type: randomType,
+          type: item.type,
         });
+      }
+
+      // Spawn items
+      if (now - lastSpawn > 900) {
+        lastSpawn = now;
+        const roll = Math.random();
+        const randomLane = Math.floor(Math.random() * 3);
+        if (roll < 0.55) {
+          // Obstacle (cone or hurdle)
+          obstaclesRef.current.push({
+            id: nextIdRef.current++,
+            lane: randomLane,
+            z: 100,
+            type: Math.random() < 0.5 ? 'cone' : 'hurdle',
+          });
+        } else if (roll < 0.9) {
+          // Coin string: 6 coins trickling down the same lane
+          for (let i = 0; i < 6; i++) {
+            spawnQueue.push({ type: 'coin', lane: randomLane, at: now + i * 150 });
+          }
+        } else {
+          // Speed boost
+          obstaclesRef.current.push({
+            id: nextIdRef.current++,
+            lane: randomLane,
+            z: 100,
+            type: 'bolt',
+          });
+        }
       }
 
       // Update positions
@@ -220,7 +245,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               obs.collected = true;
               playCoinSound();
               setScore((s) => s + 50);
-              setCombo((c) => Math.min(10, c + 1));
             } else if (obs.type === 'bolt') {
               obs.collected = true;
               playCoinSound();
@@ -498,16 +522,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           <span className="font-bold text-xs uppercase text-blue-100">SCORE</span>
           <span className="font-extrabold text-xl sm:text-2xl">{score.toLocaleString()}</span>
         </div>
-      </div>
-
-      {/* Combo Overlay (above the track, over the hills) */}
-      <div className="absolute top-[35%] left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#994700] text-white px-6 py-2 rounded-full shadow-[0_6px_0_0_#5c2800] flex flex-col items-center animate-bounce pointer-events-none z-20">
-        <span className="font-bold text-[11px] uppercase tracking-wider text-amber-200">
-          COMBO
-        </span>
-        <span className="font-extrabold text-2xl sm:text-3xl leading-none">
-          x{combo}
-        </span>
       </div>
 
       {/* Picture-in-Picture Motion Camera Feed Container */}

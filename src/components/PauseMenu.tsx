@@ -39,7 +39,7 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                 <li><strong>Motion Control:</strong> Stand in camera frame & jump physically!</li>
               </ul>
               <p className="font-bold text-[#ff7a00] mt-2">⭐ Objectives:</p>
-              <p>Collect stars & coins while avoiding hurdles & cones to maintain your combo x5 multiplier!</p>
+              <p>Collect coins & bolts while avoiding hurdles & cones to rack up a high score!</p>
             </div>
             <button
               onClick={() => {
