@@ -248,9 +248,16 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         obs.z -= speed;
       });
 
+      // Collide when an object reaches the runner's row: the runner is drawn
+      // at height-160, which maps to z = 100*160/(height-vanishingY). Using a
+      // smaller fixed window (old: z<=5) let coins visibly fly through the
+      // runner before being collected.
+      const canvas = canvasRef.current;
+      const collideZ = canvas ? (100 * 160) / (canvas.height - canvas.height / 6) : 24;
+
       // Filter off-screen
       obstaclesRef.current = obstaclesRef.current.filter((obs) => {
-        if (obs.z <= 5 && !obs.collected && !gameOverRef.current) {
+        if (obs.z <= collideZ && !obs.collected && !gameOverRef.current) {
           // Check collision at player z range (5 ~ 0)
           if (obs.lane === lane) {
             if (obs.type === 'coin') {
@@ -280,39 +287,38 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       });
 
       // Render canvas track
-      const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           const width = canvas.width;
           const height = canvas.height;
 
-          // Base ground fill: covers the whole canvas so no frame residue remains
-          ctx.fillStyle = '#64c852';
-          ctx.fillRect(0, 0, width, height);
+          // Sky + small horizon hills: the green band stays within the top
+          // 1/6 of the screen so the track gets everything below it
+          const horizon = height / 6;
 
-          // Sky gradient
-          const skyGrad = ctx.createLinearGradient(0, 0, 0, height * 0.45);
+          const skyGrad = ctx.createLinearGradient(0, 0, 0, horizon);
           skyGrad.addColorStop(0, '#58b3ff');
           skyGrad.addColorStop(1, '#9cd6ff');
           ctx.fillStyle = skyGrad;
-          ctx.fillRect(0, 0, width, height * 0.45);
+          ctx.fillRect(0, 0, width, horizon);
 
-          // Horizon hills
+          // Hills sized relative to *height* (width-scaled hills ballooned
+          // over the whole screen on wide displays)
           ctx.fillStyle = '#64c852';
           ctx.beginPath();
-          ctx.arc(width * 0.3, height * 0.45, width * 0.4, Math.PI, 0);
-          ctx.arc(width * 0.8, height * 0.45, width * 0.5, Math.PI, 0);
+          ctx.arc(width * 0.25, horizon, horizon * 0.55, Math.PI, 0);
+          ctx.arc(width * 0.75, horizon, horizon * 0.75, Math.PI, 0);
           ctx.fill();
 
           // Stadium track: three parallel, equally wide lanes (no perspective
           // convergence, so kids can tell the lanes apart at a glance)
-          const trackGrad = ctx.createLinearGradient(0, height * 0.45, 0, height);
+          const trackGrad = ctx.createLinearGradient(0, horizon, 0, height);
           trackGrad.addColorStop(0, '#0075ff');
           trackGrad.addColorStop(1, '#004db3');
           ctx.fillStyle = trackGrad;
 
-          const vanishingY = height * 0.42;
+          const vanishingY = horizon;
           const laneW = width / 3;
 
           ctx.fillRect(0, vanishingY, width, height - vanishingY);
