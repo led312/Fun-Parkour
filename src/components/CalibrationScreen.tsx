@@ -270,8 +270,28 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
     }, 900);
   };
 
-  const currentStep = status === 'testing' ? GESTURE_STEPS[stepIndex] : null;
+  // All gestures verified -> count down 3-2-1-GO! and start automatically,
+  // no button press needed.
+  useEffect(() => {
+    if (status !== 'ready') return;
+    let count = 3;
+    setCountdown(count);
+    const interval = setInterval(() => {
+      count -= 1;
+      if (count > 0) {
+        setCountdown(count);
+        playBeepSound();
+      } else {
+        clearInterval(interval);
+        setCountdown(0);
+        setTimeout(() => onCalibrationComplete(baselineRef.current), 600);
+      }
+    }, 900);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
+  const currentStep = status === 'testing' ? GESTURE_STEPS[stepIndex] : null;
   const statusTitle: Record<CalibStatus, string> = {
     loading: 'LOADING AI...',
     searching: 'STEP INTO FRAME!',
@@ -289,8 +309,6 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
     ready: 'Every move detected. Getting ready to run...',
     unavailable: 'Pose AI failed to load. Retrying - keyboard controls work too.',
   };
-
-  const canStart = status === 'ready' || status === 'unavailable';
 
   return (
     <div className="relative h-[calc(100vh-70px)] w-full bg-black flex items-center justify-center overflow-hidden select-none">
@@ -374,7 +392,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
         {/* Spacer: the live YOLO skeleton on the camera feed is the only body guide */}
         <div className="flex-1 w-full my-2" />
 
-        {/* Bottom Progress Bar & Calibration Action */}
+        {/* Bottom Progress Bar (game starts automatically once all moves pass) */}
         <div className="w-full space-y-3 pb-2">
           <div className="relative h-7 w-full bg-[#dde4e6] rounded-full border-4 border-[#8c7263] overflow-hidden shadow-inner">
             <div
@@ -387,35 +405,29 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={handleStartCalibration}
-            disabled={countdown !== null || !canStart}
-            className={`w-full py-4 rounded-2xl font-extrabold text-2xl border-b-8 transition-all shadow-xl ${
-              isAligned
-                ? 'bg-[#20b900] text-white border-[#064100]'
-                : canStart
-                  ? 'bg-[#ff7a00] hover:brightness-110 text-[#5c2800] border-[#753400] active:scale-95'
-                  : 'bg-[#b8c2c6] text-[#5a6a70] border-[#8c7263] cursor-not-allowed'
-            }`}
-          >
-            {countdown === null ? (
-              canStart ? (
-                status === 'unavailable' ? (
-                  'START WITH KEYBOARD'
-                ) : (
-                  "I'M READY!"
-                )
-              ) : (
-                'FINISH THE MOVES FIRST!'
-              )
-            ) : countdown > 0 ? (
-              `LET'S GO! ${countdown}...`
-            ) : (
-              'GO!'
-            )}
-          </button>
+          {/* Keyboard fallback: only when pose AI failed to load */}
+          {status === 'unavailable' && countdown === null && (
+            <button
+              onClick={handleStartCalibration}
+              className="w-full py-4 rounded-2xl font-extrabold text-2xl border-b-8 transition-all shadow-xl bg-[#ff7a00] hover:brightness-110 text-[#5c2800] border-[#753400] active:scale-95"
+            >
+              START WITH KEYBOARD
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Center-screen 3-2-1-GO! countdown after calibration passes */}
+      {countdown !== null && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
+          <span
+            key={countdown}
+            className="font-extrabold text-white text-9xl drop-shadow-[0_8px_0_rgba(0,0,0,0.45)] animate-in zoom-in duration-300"
+          >
+            {countdown > 0 ? countdown : 'GO!'}
+          </span>
+        </div>
+      )}
 
       {/* Floating Pause Trigger Button */}
       <button

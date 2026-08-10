@@ -146,12 +146,15 @@ export default function App() {
         )}
       </main>
 
-      {/* Bottom Navigation Shell (Shown when not on Login screen or as persistent nav) */}
-      <BottomNav
-        activeTab={activeTab}
-        onTabSelect={handleTabSelect}
-        onMenuToggle={() => setIsPauseOpen(true)}
-      />
+      {/* Bottom Navigation Shell (hidden during calibration & gameplay so the
+          camera stages get the full screen and no accidental navigation) */}
+      {screen !== 'CALIBRATION' && screen !== 'GAMEPLAY' && (
+        <BottomNav
+          activeTab={activeTab}
+          onTabSelect={handleTabSelect}
+          onMenuToggle={() => setIsPauseOpen(true)}
+        />
+      )}
 
       {/* Pause & Settings Modal Popup */}
       <PauseMenu
