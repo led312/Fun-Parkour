@@ -12,6 +12,7 @@ import {
   Keypoint,
   KP,
   measureBaseline,
+  measureShoulderX,
   measureShoulderY,
   PoseBaseline,
 } from '../utils/poseDetector';
@@ -116,7 +117,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
 
   // Did the current frame perform the requested gesture? (same thresholds as
   // the in-game gesture state machine). m may be null when the hips lose
-  // confidence (e.g. mid-squat); squat/jack don't need it.
+  // confidence (e.g. mid-squat); only jump needs it.
   const detectGesture = (
     id: GestureId,
     kps: Keypoint[],
@@ -141,10 +142,14 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
         }
         return squatFramesRef.current >= 2;
       }
-      case 'left':
-        return !!m && m.centerX < b.centerX - 0.7 * b.shoulderW;
-      case 'right':
-        return !!m && m.centerX > b.centerX + 0.7 * b.shoulderW;
+      case 'left': {
+        const sx = measureShoulderX(kps);
+        return sx !== null && sx < b.centerX - 0.45 * b.shoulderW;
+      }
+      case 'right': {
+        const sx = measureShoulderX(kps);
+        return sx !== null && sx > b.centerX + 0.45 * b.shoulderW;
+      }
       case 'jack': {
         const lw = kps[KP.LEFT_WRIST];
         const rw = kps[KP.RIGHT_WRIST];

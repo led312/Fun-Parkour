@@ -10,6 +10,7 @@ import {
   Keypoint,
   KP,
   measureBaseline,
+  measureShoulderX,
   measureShoulderY,
   PoseBaseline,
 } from '../utils/poseDetector';
@@ -99,7 +100,7 @@ export function usePoseControl(
       const b = baselineRef.current;
 
       // --- Jumping jack -> shield (checked first; suppresses plain jump).
-      // Only needs nose + wrists, so it also works while crouching. ---
+      // Only needs the wrists, so it also works while crouching. ---
       if (isJumpingJack(kps, b)) {
         if (now - lastShieldRef.current > SHIELD_COOLDOWN_MS) {
           lastShieldRef.current = now;
@@ -122,7 +123,30 @@ export function usePoseControl(
         squatFramesRef.current = 0;
       }
 
-      // Jump & lane need the hips; skip them on frames where hips are lost
+      // --- Left / right: shoulder-center displacement, 3 zones with
+      // hysteresis around the baseline center. Shoulders lead sideways steps
+      // and stay visible when hips blur out, so this runs even without m. ---
+      const shoulderX = measureShoulderX(kps);
+      if (shoulderX !== null) {
+        const dx = shoulderX - b.centerX;
+        const enter = 0.45 * b.shoulderW;
+        const exit = 0.25 * b.shoulderW;
+        let lane = laneRef.current;
+        if (lane === 1) {
+          if (dx < -enter) lane = 0;
+          else if (dx > enter) lane = 2;
+        } else if (lane === 0 && dx > -exit) {
+          lane = dx > enter ? 2 : 1;
+        } else if (lane === 2 && dx < exit) {
+          lane = dx < -enter ? 0 : 1;
+        }
+        if (lane !== laneRef.current) {
+          laneRef.current = lane;
+          handlersRef.current.onLane(lane);
+        }
+      }
+
+      // Jump needs the hips; skip it on frames where hips are lost
       if (!m) return;
 
       // --- Jump: hips rising fast / clearly above baseline ---
@@ -132,24 +156,6 @@ export function usePoseControl(
       if ((risingFast || aboveBaseline) && now - lastJumpRef.current > JUMP_COOLDOWN_MS) {
         lastJumpRef.current = now;
         handlersRef.current.onJump();
-      }
-
-      // --- Left / right: 3 zones with hysteresis around the baseline center ---
-      const dx = m.centerX - b.centerX;
-      const enter = 0.7 * b.shoulderW;
-      const exit = 0.4 * b.shoulderW;
-      let lane = laneRef.current;
-      if (lane === 1) {
-        if (dx < -enter) lane = 0;
-        else if (dx > enter) lane = 2;
-      } else if (lane === 0 && dx > -exit) {
-        lane = dx > enter ? 2 : 1;
-      } else if (lane === 2 && dx < exit) {
-        lane = dx < -enter ? 0 : 1;
-      }
-      if (lane !== laneRef.current) {
-        laneRef.current = lane;
-        handlersRef.current.onLane(lane);
       }
 
       prevHipYRef.current = m.hipY;

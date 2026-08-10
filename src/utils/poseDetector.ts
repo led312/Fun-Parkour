@@ -99,6 +99,16 @@ export function measureShoulderY(kps: Keypoint[]): number | null {
   return (ls.y + rs.y) / 2;
 }
 
+/** Shoulder midpoint x, or null when shoulders aren't confidently visible.
+ *  Used for lane detection: the upper body leads sideways steps and the
+ *  shoulders stay trackable when the hips lose confidence mid-move. */
+export function measureShoulderX(kps: Keypoint[]): number | null {
+  const ls = kps[KP.LEFT_SHOULDER];
+  const rs = kps[KP.RIGHT_SHOULDER];
+  if (!kpOk(ls) || !kpOk(rs)) return null;
+  return (ls.x + rs.x) / 2;
+}
+
 // COCO skeleton limb pairs for overlay rendering
 const LIMBS: [number, number][] = [
   [KP.NOSE, KP.LEFT_EYE], [KP.NOSE, KP.RIGHT_EYE],
