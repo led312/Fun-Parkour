@@ -73,6 +73,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
   const skeletonCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const samplesRef = useRef<PoseBaseline[]>([]);
   const sampleStartRef = useRef(0);
+  const lastSampleRef = useRef<PoseBaseline | null>(null);
   const baselineRef = useRef<PoseBaseline | null>(null);
   const prevHipYRef = useRef<number | null>(null);
   const squatFramesRef = useRef(0);
@@ -187,14 +188,30 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
           const m = kps ? measureBaseline(kps) : null;
 
           if (!baselineRef.current) {
-            // Phase 1: standing baseline sampling
-            if (!m) {
-              setStatus(samplesRef.current.length > 0 ? 'calibrating' : 'searching');
+            // Phase 1: standing baseline sampling, gated on stability: a
+            // sample only counts when the pose barely moved since the last
+            // frame, and any wiggle restarts the 1s window. Without this the
+            // baseline can be captured mid-step/mid-turn (common on replays,
+            // when the warm model starts sampling instantly), which skews
+            // every baseline-relative gesture check afterwards.
+            const last = lastSampleRef.current;
+            const stable =
+              !!m &&
+              !!last &&
+              Math.abs(m.shoulderY - last.shoulderY) < 0.08 * last.torso &&
+              Math.abs(m.hipY - last.hipY) < 0.08 * last.torso &&
+              Math.abs(m.centerX - last.centerX) < 0.15 * last.shoulderW &&
+              Math.abs(m.shoulderW - last.shoulderW) < 0.15 * last.shoulderW;
+
+            if (!m || !stable) {
+              samplesRef.current = [];
+              sampleStartRef.current = Date.now();
+              lastSampleRef.current = m;
+              setProgress(0);
+              setStatus(m ? 'calibrating' : 'searching');
             } else {
-              if (samplesRef.current.length === 0) {
-                sampleStartRef.current = Date.now();
-              }
               samplesRef.current.push(m);
+              lastSampleRef.current = m;
               const elapsed = Date.now() - sampleStartRef.current;
               // Baseline sampling fills the first 20% of the progress bar
               setProgress(Math.min(20, Math.round((elapsed / SAMPLE_MS) * 20)));
