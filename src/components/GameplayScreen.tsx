@@ -13,7 +13,7 @@ interface Obstacle {
   id: number;
   lane: number; // 0: Left, 1: Center, 2: Right
   z: number; // 100 (far) to 0 (close)
-  type: 'cone' | 'hurdle' | 'coin' | 'bolt';
+  type: 'cone' | 'hurdle' | 'coin';
   collected?: boolean;
 }
 
@@ -26,7 +26,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [isJumping, setIsJumping] = useState(false);
   const [isSliding, setIsSliding] = useState(false);
   const [hasShield, setHasShield] = useState(false);
-  const [hasBoost, setHasBoost] = useState(false);
   const [webcamActive, setWebcamActive] = useState(false);
   const [shieldCharges, setShieldCharges] = useState(3);
   const [shieldRemaining, setShieldRemaining] = useState(0);
@@ -214,24 +213,16 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             z: 100,
             type: Math.random() < 0.5 ? 'cone' : 'hurdle',
           });
-        } else if (roll < 0.9) {
+        } else {
           // Coin string: 6 coins trickling down the same lane
           for (let i = 0; i < 6; i++) {
             spawnQueue.push({ type: 'coin', lane: randomLane, at: now + i * 150 });
           }
-        } else {
-          // Speed boost
-          obstaclesRef.current.push({
-            id: nextIdRef.current++,
-            lane: randomLane,
-            z: 100,
-            type: 'bolt',
-          });
         }
       }
 
       // Update positions
-      const speed = hasBoost ? 1.5 : 0.9;
+      const speed = 0.9;
       obstaclesRef.current.forEach((obs) => {
         obs.z -= speed;
       });
@@ -245,11 +236,6 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               obs.collected = true;
               playCoinSound();
               setScore((s) => s + 50);
-            } else if (obs.type === 'bolt') {
-              obs.collected = true;
-              playCoinSound();
-              setHasBoost(true);
-              setTimeout(() => setHasBoost(false), 3000);
             } else if (obs.type === 'cone' || obs.type === 'hurdle') {
               if (isJumping && obs.type === 'hurdle') {
                 // Avoided hurdle by jumping!
@@ -296,56 +282,34 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           ctx.arc(width * 0.8, height * 0.45, width * 0.5, Math.PI, 0);
           ctx.fill();
 
-          // Stadium track perspective
+          // Stadium track: three parallel, equally wide lanes (no perspective
+          // convergence, so kids can tell the lanes apart at a glance)
           const trackGrad = ctx.createLinearGradient(0, height * 0.45, 0, height);
           trackGrad.addColorStop(0, '#0075ff');
           trackGrad.addColorStop(1, '#004db3');
           ctx.fillStyle = trackGrad;
 
-          const vanishingX = width / 2;
           const vanishingY = height * 0.42;
-          // Track bottom spans exactly the visible width so the three lanes
-          // split the screen into equal thirds and side lanes stay centered
-          const marginX = 0;
+          const laneW = width / 3;
 
-          ctx.beginPath();
-          ctx.moveTo(vanishingX - 40, vanishingY);
-          ctx.lineTo(vanishingX + 40, vanishingY);
-          ctx.lineTo(width + marginX, height);
-          ctx.lineTo(-marginX, height);
-          ctx.closePath();
-          ctx.fill();
+          ctx.fillRect(0, vanishingY, width, height - vanishingY);
 
-          // Lane dividing lines (3 lanes)
+          // Lane dividing lines (3 equal lanes)
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 4;
           for (let i = 1; i <= 2; i++) {
-            const laneStartx = vanishingX - 40 + (i * 80) / 3;
-            const laneEndX = -marginX + (i * (width + marginX * 2)) / 3;
-
             ctx.beginPath();
             ctx.setLineDash([15, 15]);
-            ctx.moveTo(laneStartx, vanishingY);
-            ctx.lineTo(laneEndX, height);
+            ctx.moveTo(i * laneW, vanishingY);
+            ctx.lineTo(i * laneW, height);
             ctx.stroke();
             ctx.setLineDash([]);
           }
 
           // Orange track side borders
           ctx.fillStyle = '#ff7a00';
-          ctx.beginPath();
-          ctx.moveTo(-marginX, height);
-          ctx.lineTo(-marginX * 0.33, height);
-          ctx.lineTo(vanishingX - 50, vanishingY);
-          ctx.lineTo(vanishingX - 40, vanishingY);
-          ctx.fill();
-
-          ctx.beginPath();
-          ctx.moveTo(width + marginX, height);
-          ctx.lineTo(width + marginX * 0.33, height);
-          ctx.lineTo(vanishingX + 50, vanishingY);
-          ctx.lineTo(vanishingX + 40, vanishingY);
-          ctx.fill();
+          ctx.fillRect(0, vanishingY, 10, height - vanishingY);
+          ctx.fillRect(width - 10, vanishingY, 10, height - vanishingY);
 
           // Draw obstacles & collectibles
           obstaclesRef.current.forEach((obs) => {
@@ -354,10 +318,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             const scale = (100 - obs.z) / 100; // 0 (far) to 1 (near)
             const objY = vanishingY + (height - vanishingY) * scale;
 
-            // Lane X position calculation
-            const laneLeftX = -marginX + (obs.lane * (width + marginX * 2)) / 3;
-            const laneRightX = -marginX + ((obs.lane + 1) * (width + marginX * 2)) / 3;
-            const objX = (laneLeftX + laneRightX) / 2 * scale + vanishingX * (1 - scale);
+            // Lane X position: lane centers stay fixed on parallel lanes
+            const objX = (obs.lane + 0.5) * laneW;
 
             const size = Math.max(22, 85 * scale);
 
@@ -365,22 +327,19 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             ctx.translate(objX, objY);
 
             if (obs.type === 'coin') {
+              // Coins are drawn smaller than obstacles so they read as pickups
+              const r = Math.max(9, size * 0.26);
               ctx.fillStyle = '#ffd700';
               ctx.strokeStyle = '#ffffff';
-              ctx.lineWidth = 3 * scale;
+              ctx.lineWidth = Math.max(1.5, 3 * scale);
               ctx.beginPath();
-              ctx.arc(0, -size / 2, size / 2, 0, Math.PI * 2);
+              ctx.arc(0, -r, r, 0, Math.PI * 2);
               ctx.fill();
               ctx.stroke();
               ctx.fillStyle = '#b39200';
-              ctx.font = `bold ${Math.max(10, 18 * scale)}px sans-serif`;
+              ctx.font = `bold ${Math.max(8, r)}px sans-serif`;
               ctx.textAlign = 'center';
-              ctx.fillText('$', 0, -size / 4);
-            } else if (obs.type === 'bolt') {
-              ctx.fillStyle = '#39ff14';
-              ctx.font = `${Math.max(16, 40 * scale)}px sans-serif`;
-              ctx.textAlign = 'center';
-              ctx.fillText('⚡', 0, -size / 3);
+              ctx.fillText('$', 0, -r * 0.66);
             } else if (obs.type === 'cone') {
               ctx.fillStyle = '#ff5500';
               ctx.beginPath();
@@ -402,9 +361,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
           // Draw Runner Character in Perspective
           const runnerScale = 0.9;
-          const playerLaneLeftX = -marginX + (lane * (width + marginX * 2)) / 3;
-          const playerLaneRightX = -marginX + ((lane + 1) * (width + marginX * 2)) / 3;
-          const playerX = (playerLaneLeftX + playerLaneRightX) / 2;
+          const playerX = (lane + 0.5) * laneW;
           let playerY = height - 160;
 
           if (isJumping) {
@@ -505,7 +462,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       cancelAnimationFrame(frameRef.current);
       clearInterval(scoreInterval);
     };
-  }, [lane, isJumping, isSliding, hasBoost, hasShield]);
+  }, [lane, isJumping, isSliding, hasShield]);
 
   return (
     <div className="relative h-[calc(100vh-70px)] w-full bg-[#58b3ff] overflow-hidden select-none">
