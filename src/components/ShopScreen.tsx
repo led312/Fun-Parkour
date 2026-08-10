@@ -20,7 +20,6 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       type: 'avatar',
       description: 'Energetic parkour puppy with orange headband!',
       cost: 500,
-      unlocked: true,
       imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCU8N0o6n2nU7TPm-bakO1gnAsgq7WkhP2ZE16-Ssmu-3GnaN0eo5JAC-FScc44lpXgnwAJcXdTf-43ZymmnpW5N6GLgXilkSj6CUxameJTxYxULe3An6SDU9xL1X0Nxya-CIW-xED7V6eHiQj4-eficQMxntmQBCSpsOCARJV8lrP-C17EkZroBKjc4WF9dbr4AHRwklLrtHK6gU1gG79BX-_xf-uiHUbcEtYWXA9dfxy97O8Eyf_W',
     },
     {
@@ -29,38 +28,35 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       type: 'avatar',
       description: 'Fast track runner wearing bib 127!',
       cost: 800,
-      unlocked: user.coins >= 800,
       icon: 'directions_run',
     },
     {
       id: 'shield_boost',
       name: 'Super Shield',
       type: 'powerup',
-      description: 'Protects against 1 obstacle collision per run.',
+      description: '+1 shield charge on every run.',
       cost: 300,
-      unlocked: true,
       icon: 'shield',
     },
     {
       id: 'rocket_boost',
       name: 'Rocket Jetpack',
       type: 'powerup',
-      description: 'Fly over obstacles for 5 seconds!',
+      description: 'Double-jump to fly over everything for 5s, once per run!',
       cost: 1000,
-      unlocked: false,
       icon: 'rocket_launch',
     },
   ];
 
   const handleBuy = (item: ShopItem) => {
     playButtonClick();
-    if (user.coins >= item.cost) {
-      playVictorySound();
-      onUpdateUser({
-        coins: user.coins - item.cost,
-        selectedAvatar: item.type === 'avatar' ? item.id : user.selectedAvatar,
-      });
-    }
+    if (user.coins < item.cost || user.ownedItems.includes(item.id)) return;
+    playVictorySound();
+    onUpdateUser({
+      coins: user.coins - item.cost,
+      ownedItems: [...user.ownedItems, item.id],
+      selectedAvatar: item.type === 'avatar' ? item.id : user.selectedAvatar,
+    });
   };
 
   return (
@@ -134,16 +130,22 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
                 <span className="bg-[#20b900] text-white text-xs font-extrabold px-3 py-1.5 rounded-full border border-white">
                   EQUIPPED
                 </span>
-              ) : item.unlocked ? (
-                <button
-                  onClick={() => {
-                    playButtonClick();
-                    onUpdateUser({ selectedAvatar: item.id });
-                  }}
-                  className="bg-[#0057c1] text-white text-xs font-extrabold px-4 py-2 rounded-xl border-b-4 border-[#001a43] active:scale-95"
-                >
-                  SELECT
-                </button>
+              ) : user.ownedItems.includes(item.id) ? (
+                item.type === 'avatar' ? (
+                  <button
+                    onClick={() => {
+                      playButtonClick();
+                      onUpdateUser({ selectedAvatar: item.id });
+                    }}
+                    className="bg-[#0057c1] text-white text-xs font-extrabold px-4 py-2 rounded-xl border-b-4 border-[#001a43] active:scale-95"
+                  >
+                    SELECT
+                  </button>
+                ) : (
+                  <span className="bg-[#20b900] text-white text-xs font-extrabold px-3 py-1.5 rounded-full border border-white">
+                    OWNED
+                  </span>
+                )
               ) : (
                 <button
                   onClick={() => handleBuy(item)}

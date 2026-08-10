@@ -1,7 +1,5 @@
 export type ScreenState = 'LOGIN' | 'LOBBY' | 'CALIBRATION' | 'GAMEPLAY' | 'RESULTS' | 'SHOP';
 
-export type TabState = 'bolt' | 'shield' | 'rocket';
-
 export interface UserProfile {
   name: string;
   parentEmail: string;
@@ -11,6 +9,7 @@ export interface UserProfile {
   coins: number;
   stars: number;
   selectedAvatar: string;
+  ownedItems: string[]; // shop item ids, e.g. 'shiba', 'rocket_boost'
 }
 
 export interface ShopItem {
@@ -19,7 +18,6 @@ export interface ShopItem {
   type: 'avatar' | 'powerup';
   description: string;
   cost: number;
-  unlocked: boolean;
   imageUrl?: string;
   icon?: string;
 }

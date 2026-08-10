@@ -7,6 +7,8 @@ interface GameplayScreenProps {
   onGameOver: (finalScore: number, starsEarned: number) => void;
   onPause: () => void;
   poseBaseline?: PoseBaseline | null;
+  hasJetpack?: boolean; // owned shop powerup: double-jump flight
+  hasSuperShield?: boolean; // owned shop powerup: +1 shield charge per run
 }
 
 interface Obstacle {
@@ -20,15 +22,18 @@ interface Obstacle {
 export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   onGameOver,
   poseBaseline = null,
+  hasJetpack = false,
+  hasSuperShield = false,
 }) => {
-  const [score, setScore] = useState(2100);
+  const [score, setScore] = useState(0);
   const [lane, setLane] = useState<number>(1); // 0, 1, 2
   const [isJumping, setIsJumping] = useState(false);
   const [isSliding, setIsSliding] = useState(false);
   const [hasShield, setHasShield] = useState(false);
   const [webcamActive, setWebcamActive] = useState(false);
-  const [shieldCharges, setShieldCharges] = useState(3);
+  const [shieldCharges, setShieldCharges] = useState(3 + (hasSuperShield ? 1 : 0));
   const [shieldRemaining, setShieldRemaining] = useState(0);
+  const [isFlying, setIsFlying] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -41,8 +46,10 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const jumpingRef = useRef(false);
   const slidingRef = useRef(false);
   const hasShieldRef = useRef(false);
-  const shieldChargesRef = useRef(3);
+  const shieldChargesRef = useRef(3 + (hasSuperShield ? 1 : 0));
   const shieldEndRef = useRef(0);
+  const flyingRef = useRef(false);
+  const jetpackUsedRef = useRef(false); // one flight per run
 
   // Keep a live copy of score so the game loop can report it on game over
   useEffect(() => {
@@ -98,7 +105,21 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
   // Shared action triggers (keyboard + pose control)
   const triggerJump = useCallback(() => {
-    if (jumpingRef.current) return;
+    if (flyingRef.current) return;
+    if (jumpingRef.current) {
+      // Double jump fires the purchased jetpack: 5s flight, one charge per run
+      if (hasJetpack && !jetpackUsedRef.current) {
+        jetpackUsedRef.current = true;
+        flyingRef.current = true;
+        setIsFlying(true);
+        playVictorySound();
+        setTimeout(() => {
+          flyingRef.current = false;
+          setIsFlying(false);
+        }, 5000);
+      }
+      return;
+    }
     jumpingRef.current = true;
     setIsJumping(true);
     playJumpSound();
@@ -106,7 +127,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       jumpingRef.current = false;
       setIsJumping(false);
     }, 650);
-  }, []);
+  }, [hasJetpack]);
 
   const triggerSlide = useCallback(() => {
     if (slidingRef.current) return;
@@ -237,7 +258,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               playCoinSound();
               setScore((s) => s + 50);
             } else if (obs.type === 'cone' || obs.type === 'hurdle') {
-              if (isJumping && obs.type === 'hurdle') {
+              if (flyingRef.current) {
+                // Jetpack flight carries the runner over everything
+              } else if (isJumping && obs.type === 'hurdle') {
                 // Avoided hurdle by jumping!
                 setScore((s) => s + 30);
               } else if (hasShield) {
@@ -367,6 +390,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           if (isJumping) {
             playerY -= 65;
           }
+          if (isFlying) {
+            playerY -= 120;
+          }
 
           // Runner Shadow
           ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -424,6 +450,17 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           ctx.fillRect(-18, 22 + legOffset, 16, 10);
           ctx.fillRect(2, 22 - legOffset, 16, 10);
 
+          // Jetpack flame while flying
+          if (isFlying) {
+            ctx.fillStyle = '#ff5500';
+            ctx.beginPath();
+            ctx.moveTo(-12, 34);
+            ctx.lineTo(12, 34);
+            ctx.lineTo(0, 66 + Math.sin(Date.now() / 40) * 8);
+            ctx.closePath();
+            ctx.fill();
+          }
+
           // GO! banner over runner
           ctx.fillStyle = '#ff5500';
           ctx.font = 'extrabold 32px sans-serif';
@@ -462,7 +499,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       cancelAnimationFrame(frameRef.current);
       clearInterval(scoreInterval);
     };
-  }, [lane, isJumping, isSliding, hasShield]);
+  }, [lane, isJumping, isSliding, hasShield, isFlying]);
 
   return (
     <div className="relative h-[calc(100vh-70px)] w-full bg-[#58b3ff] overflow-hidden select-none">

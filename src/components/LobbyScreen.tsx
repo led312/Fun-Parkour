@@ -5,11 +5,15 @@ import { playButtonClick } from '../utils/audio';
 interface LobbyScreenProps {
   user: UserProfile;
   onStartCalibration: () => void;
+  onOpenShop: () => void;
+  onOpenSettings: () => void;
 }
 
 export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   user,
   onStartCalibration,
+  onOpenShop,
+  onOpenSettings,
 }) => {
   const [showToast, setShowToast] = useState(true);
   const [cameraActive, setCameraActive] = useState(false);
@@ -57,15 +61,15 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
         <div className="absolute inset-0 bg-white/10 backdrop-brightness-105"></div>
       </div>
 
-      {/* High Score Toast Notification */}
+      {/* High Score Toast Notification (only when there is a real record) */}
       <div
         className={`fixed top-20 left-1/2 -translate-x-1/2 bg-[#106e00] text-white px-6 py-2.5 rounded-full flex items-center gap-2.5 shadow-lg z-30 transition-all duration-500 border-2 border-white ${
-          showToast ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-6 pointer-events-none'
+          showToast && user.highScore > 0 ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-6 pointer-events-none'
         }`}
       >
         <span className="material-symbols-outlined text-white symbol-filled">stars</span>
         <span className="font-extrabold text-sm uppercase tracking-wider">
-          New High Score: {user.highScore || 2500}!
+          New High Score: {user.highScore}!
         </span>
       </div>
 
@@ -95,6 +99,30 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             <span className="font-extrabold text-2xl sm:text-3xl tracking-wider">
               START
             </span>
+          </button>
+        </div>
+
+        {/* Shop & Settings (moved up from the old bottom nav bar) */}
+        <div className="flex gap-3 w-full max-w-md mt-3">
+          <button
+            onClick={() => {
+              playButtonClick();
+              onOpenShop();
+            }}
+            className="flex-1 bg-[#0057c1] hover:brightness-110 active:scale-95 text-white rounded-2xl px-6 py-3.5 flex items-center justify-center gap-2 border-b-8 border-[#001a43] shadow-xl transition-all"
+          >
+            <span className="material-symbols-outlined text-2xl symbol-filled">storefront</span>
+            <span className="font-extrabold text-lg tracking-wider">SHOP</span>
+          </button>
+          <button
+            onClick={() => {
+              playButtonClick();
+              onOpenSettings();
+            }}
+            className="flex-1 bg-[#0057c1] hover:brightness-110 active:scale-95 text-white rounded-2xl px-6 py-3.5 flex items-center justify-center gap-2 border-b-8 border-[#001a43] shadow-xl transition-all"
+          >
+            <span className="material-symbols-outlined text-2xl symbol-filled">settings</span>
+            <span className="font-extrabold text-lg tracking-wider">SETTINGS</span>
           </button>
         </div>
       </div>

@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { ScreenState, TabState, UserProfile } from './types';
+import React, { useEffect, useState } from 'react';
+import { ScreenState, UserProfile } from './types';
 import { PoseBaseline } from './utils/poseDetector';
 import { Header } from './components/Header';
-import { BottomNav } from './components/BottomNav';
 import { LoginScreen } from './components/LoginScreen';
 import { LobbyScreen } from './components/LobbyScreen';
 import { CalibrationScreen } from './components/CalibrationScreen';
@@ -11,30 +10,54 @@ import { ResultsScreen } from './components/ResultsScreen';
 import { ShopScreen } from './components/ShopScreen';
 import { PauseMenu } from './components/PauseMenu';
 
+// Progress (high score, coins, purchases) and the login session survive page
+// reloads via localStorage.
+const USER_KEY = 'kidrun.user';
+const SESSION_KEY = 'kidrun.session';
+
+const DEFAULT_USER: UserProfile = {
+  name: 'Speedy Runner',
+  parentEmail: '',
+  isGuest: false,
+  score: 0,
+  highScore: 0,
+  coins: 1250,
+  stars: 12,
+  selectedAvatar: 'shiba',
+  ownedItems: ['shiba'],
+};
+
+function loadStoredUser(): UserProfile {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    if (raw) return { ...DEFAULT_USER, ...JSON.parse(raw) };
+  } catch {
+    // corrupted storage -> fall through to defaults
+  }
+  return DEFAULT_USER;
+}
+
 export default function App() {
-  const [screen, setScreen] = useState<ScreenState>('LOGIN');
-  const [activeTab, setActiveTab] = useState<TabState>('rocket');
+  const [screen, setScreen] = useState<ScreenState>(() =>
+    localStorage.getItem(SESSION_KEY) ? 'LOBBY' : 'LOGIN',
+  );
   const [isPauseOpen, setIsPauseOpen] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
 
-  const [user, setUser] = useState<UserProfile>({
-    name: 'Speedy Runner',
-    parentEmail: '',
-    isGuest: false,
-    score: 2500,
-    highScore: 2500,
-    coins: 1250,
-    stars: 12,
-    selectedAvatar: 'shiba',
-  });
+  const [user, setUser] = useState<UserProfile>(loadStoredUser);
 
-  const [lastRunScore, setLastRunScore] = useState(2500);
-  const [lastStarsEarned, setLastStarsEarned] = useState(3);
+  const [lastRunScore, setLastRunScore] = useState(0);
+  const [lastStarsEarned, setLastStarsEarned] = useState(0);
   // Standing-pose baseline captured on the calibration screen (null = the
   // game calibrates itself during the first second of play)
   const [poseBaseline, setPoseBaseline] = useState<PoseBaseline | null>(null);
 
+  useEffect(() => {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  }, [user]);
+
   const handleLoginSuccess = (name: string, email: string, isGuest: boolean) => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ name }));
     setUser((prev) => ({
       ...prev,
       name,
@@ -56,24 +79,6 @@ export default function App() {
     setLastRunScore(finalScore);
     setLastStarsEarned(starsEarned);
     setScreen('RESULTS');
-  };
-
-  const handleTabSelect = (tab: TabState) => {
-    setActiveTab(tab);
-    // Login is mandatory: ignore navigation while on the login screen
-    if (screen === 'LOGIN') {
-      return;
-    }
-    if (tab === 'bolt') {
-      setScreen('SHOP');
-    } else if (tab === 'rocket') {
-      if (screen === 'LOBBY' || screen === 'RESULTS' || screen === 'SHOP') {
-        // Calibration is mandatory before every run
-        setScreen('CALIBRATION');
-      }
-    } else if (tab === 'shield') {
-      setIsPauseOpen(true);
-    }
   };
 
   return (
@@ -107,6 +112,8 @@ export default function App() {
           <LobbyScreen
             user={user}
             onStartCalibration={() => setScreen('CALIBRATION')}
+            onOpenShop={() => setScreen('SHOP')}
+            onOpenSettings={() => setIsPauseOpen(true)}
           />
         )}
 
@@ -123,6 +130,8 @@ export default function App() {
         {screen === 'GAMEPLAY' && (
           <GameplayScreen
             poseBaseline={poseBaseline}
+            hasJetpack={user.ownedItems.includes('rocket_boost')}
+            hasSuperShield={user.ownedItems.includes('shield_boost')}
             onGameOver={handleGameOver}
             onPause={() => setIsPauseOpen(true)}
           />
@@ -145,16 +154,6 @@ export default function App() {
           />
         )}
       </main>
-
-      {/* Bottom Navigation Shell (hidden during calibration & gameplay so the
-          camera stages get the full screen and no accidental navigation) */}
-      {screen !== 'CALIBRATION' && screen !== 'GAMEPLAY' && (
-        <BottomNav
-          activeTab={activeTab}
-          onTabSelect={handleTabSelect}
-          onMenuToggle={() => setIsPauseOpen(true)}
-        />
-      )}
 
       {/* Pause & Settings Modal Popup */}
       <PauseMenu
