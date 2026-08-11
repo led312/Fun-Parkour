@@ -243,7 +243,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       }
 
       // Update positions
-      const speed = 0.6;
+      const speed = 0.815;
       obstaclesRef.current.forEach((obs) => {
         obs.z -= speed;
       });
