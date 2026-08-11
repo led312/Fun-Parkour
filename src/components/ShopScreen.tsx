@@ -20,7 +20,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       type: 'avatar',
       description: 'Energetic parkour puppy with orange headband!',
       cost: 500,
-      imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCU8N0o6n2nU7TPm-bakO1gnAsgq7WkhP2ZE16-Ssmu-3GnaN0eo5JAC-FScc44lpXgnwAJcXdTf-43ZymmnpW5N6GLgXilkSj6CUxameJTxYxULe3An6SDU9xL1X0Nxya-CIW-xED7V6eHiQj4-eficQMxntmQBCSpsOCARJV8lrP-C17EkZroBKjc4WF9dbr4AHRwklLrtHK6gU1gG79BX-_xf-uiHUbcEtYWXA9dfxy97O8Eyf_W',
+      imageUrl: '/mascot-shiba.png',
     },
     {
       id: 'kinetic_hero',

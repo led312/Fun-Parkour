@@ -341,7 +341,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
           />
         ) : (
           <img
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuB6LMMBlmViXMDSKZlMYrMd5D8inp5eab_TQBPnlXZyTcv2yqEBBOFxhgyFh6jh_pfJxrM_qL6s0Llqf9dmVW8W1lvpQDw76T-zU67Dz_RoVZonj-NuSv2JMV043y_q58aMV7_vss3qkeRL_02NxW9mEVnRCc6eewLJFzB0X8UAltchTx2KyePsGzPY0i_Y-JxEeHdc69NyEhsIGopz7OgRfkUtWecEOIv9Gcq84T6gzx0DZsqOJoO0"
+            src="/calibration-bg.jpg"
             alt="Playroom Calibration Background"
             className="w-full h-full object-cover object-center opacity-80"
           />

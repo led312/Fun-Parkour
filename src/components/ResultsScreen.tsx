@@ -88,7 +88,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
           <div
             className="trophy-glow -mt-20 w-44 h-44 sm:w-48 sm:h-48 bg-cover bg-center rounded-full border-8 border-white shadow-xl"
             style={{
-              backgroundImage: `url('https://lh3.googleusercontent.com/aida-public/AB6AXuBbSKwZckUA1VdysPkrJ_hGuuE3eCEHCk6LfYaSg6jK6RwmXRKBQLg2cmtugAbXxb-qe0lWOno7uqJIR7WOen6wp0Emr5VGa_HC1mwVbWDBPtMpoUNEezKHElDlrimx2P0XEv3AABz-_S_vhMTXx1aoaknM3ZESGuEdu3xJnMUkB4dZ8pe3BsRnEET_Ki6iICyTpp-koJ6pg5TcY69TSZLJvrKN1CNpX1LrZB1k86qBcuB3jXLXoysc')`,
+              backgroundImage: `url('/trophy.jpg')`,
             }}
           />
 
