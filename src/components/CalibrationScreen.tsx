@@ -71,6 +71,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
   const [webcamActive, setWebcamActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const skeletonCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const samplesRef = useRef<PoseBaseline[]>([]);
   const sampleStartRef = useRef(0);
   const lastSampleRef = useRef<PoseBaseline | null>(null);
@@ -85,9 +86,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
     // Try auto-enabling webcam for pose tracking experience
     navigator.mediaDevices?.getUserMedia({ video: true })
       .then((stream) => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
+        streamRef.current = stream;
         setWebcamActive(true);
       })
       .catch(() => {
@@ -96,12 +95,29 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
       });
 
     return () => {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream.getTracks().forEach((track) => track.stop());
-      }
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     };
   }, []);
+
+  // The <video> element only mounts after webcamActive flips true, so the
+  // stream can't be attached in the getUserMedia callback above (the ref is
+  // still null at that point). Attach it here once the element exists.
+  useEffect(() => {
+    if (webcamActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [webcamActive]);
+
+  // Watchdog: never sit on "LOADING AI..." forever. Any silent stall (camera
+  // stream that never becomes ready, a model load that outlives its own
+  // retries) ends on the keyboard-fallback screen instead. The pose loop
+  // keeps polling underneath and recovers if the model finishes loading.
+  useEffect(() => {
+    if (status !== 'loading') return;
+    const watchdog = setTimeout(() => setStatus('unavailable'), 60000);
+    return () => clearTimeout(watchdog);
+  }, [status]);
 
   // Match skeleton overlay resolution to its displayed size
   useEffect(() => {
