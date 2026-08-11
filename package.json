@@ -7,6 +7,7 @@
     "dev": "concurrently -n web,api -c blue,green \"vite --port=3000 --host=0.0.0.0\" \"tsx watch server.ts\"",
     "dev:web": "vite --port=3000 --host=0.0.0.0",
     "server": "tsx watch server.ts",
+    "start": "concurrently -n web,api -c blue,green \"vite --port=3000 --host=0.0.0.0\" \"tsx server.ts\"",
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",

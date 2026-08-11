@@ -9,6 +9,8 @@ coverage/
 
 # User account data (registered via the auth server)
 data/user.json
+data/user.json.migrated
+data/users.db
 
 # Pose model export artifacts (regenerate via scripts/export_pose_model.py)
 .venv-pose/
