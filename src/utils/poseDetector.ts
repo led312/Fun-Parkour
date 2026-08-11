@@ -3,13 +3,18 @@
 // keypoints in *mirrored* video coordinates (matching the on-screen PiP feed,
 // so "user moves left" == decreasing x).
 
-import * as ort from 'onnxruntime-web';
+import * as ort from 'onnxruntime-web/wasm';
+// Wasm-only build on purpose: ORT's WebGPU path hangs session creation on
+// machines with headless/software GPUs (adapter probe can even succeed while
+// the actual session init never settles), and the WebGPU-capable jsep wasm
+// binary is 2x the size. The plain simd+threaded wasm build is smaller and
+// works everywhere.
 // Let Vite bundle the ORT WASM artifacts as real assets (serving them from
 // /public breaks in dev: ORT imports the .mjs with ?import, which Vite rejects
 // for public-dir files). onnxruntime-web's package exports map exposes these
 // two subpaths explicitly.
-import ortWasmModuleUrl from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.mjs?url';
-import ortWasmBinaryUrl from 'onnxruntime-web/ort-wasm-simd-threaded.jsep.wasm?url';
+import ortWasmModuleUrl from 'onnxruntime-web/ort-wasm-simd-threaded.mjs?url';
+import ortWasmBinaryUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url';
 
 export interface Keypoint {
   x: number;
@@ -169,7 +174,7 @@ let inputCanvas: HTMLCanvasElement | null = null;
 
 // Pinned to the installed onnxruntime-web version; used only when the locally
 // served wasm binary fails to compile (e.g. a truncated copy in node_modules
-// or a network filter mangling the 26MB download).
+// or a network filter mangling the 13MB download).
 const ORT_VERSION = '1.27.0';
 const ORT_CDN_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist`;
 
@@ -181,23 +186,25 @@ function createSession(wasmPaths: { mjs: string; wasm: string }) {
     ? Math.min(4, Math.max(1, (navigator.hardwareConcurrency || 2) - 1))
     : 1;
   return ort.InferenceSession.create(MODEL_URL, {
-    // WebGPU (Chrome/Edge, Safari 26+) is much faster than wasm for YOLO;
-    // ORT falls back to wasm automatically when WebGPU is unavailable.
-    executionProviders: ['webgpu', 'wasm'],
+    executionProviders: ['wasm'],
     graphOptimizationLevel: 'all',
   });
 }
 
 export function loadPoseModel(): Promise<ort.InferenceSession> {
   if (!sessionPromise) {
+    // Exactly one session create in flight at a time — ORT's wasm runtime
+    // initializes once globally, and any create issued while another is still
+    // pending fails with "multiple calls to 'initWasm()' detected". The CDN
+    // retry is therefore only chained after a genuinely settled failure.
     sessionPromise = createSession({
       mjs: ortWasmModuleUrl,
       wasm: ortWasmBinaryUrl,
     }).catch((e) => {
       console.warn('Local ORT wasm failed, retrying with CDN copy:', e);
       return createSession({
-        mjs: `${ORT_CDN_BASE}/ort-wasm-simd-threaded.jsep.mjs`,
-        wasm: `${ORT_CDN_BASE}/ort-wasm-simd-threaded.jsep.wasm`,
+        mjs: `${ORT_CDN_BASE}/ort-wasm-simd-threaded.mjs`,
+        wasm: `${ORT_CDN_BASE}/ort-wasm-simd-threaded.wasm`,
       });
     });
     // A rejected session must not be cached forever: clear it so the next
