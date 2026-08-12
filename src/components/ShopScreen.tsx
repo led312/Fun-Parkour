@@ -20,7 +20,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       type: 'avatar',
       description: '活力满满的跑酷小狗,戴着橙色发带!',
       cost: 500,
-      imageUrl: '/mascot-shiba.png',
+      imageUrl: '/assets/mascot-shiba.png',
     },
     {
       id: 'kinetic_hero',

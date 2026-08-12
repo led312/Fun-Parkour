@@ -12,13 +12,15 @@ interface GameplayScreenProps {
   hasScoreDoubler?: boolean; // owned shop powerup: 10s of 2x score at run start
 }
 
-// Runner sprite images (transparent PNGs in /public). While a sprite is
-// missing, the game falls back to the vector-drawn runner.
+// Runner sprite images (transparent PNGs in /public/assets). Running
+// alternates between two frames; any missing sprite falls back to the
+// vector-drawn runner.
 const RUNNER_SPRITES = {
-  run: '/runner-run.png',
-  jump: '/runner-jump.png',
-  slide: '/runner-slide.png',
-  fly: '/runner-fly.png',
+  'run-1': '/assets/runner-run-1.png',
+  'run-2': '/assets/runner-run-2.png',
+  jump: '/assets/runner-jump.png',
+  slide: '/assets/runner-slide.png',
+  fly: '/assets/runner-fly.png',
 } as const;
 
 interface Obstacle {
@@ -470,8 +472,10 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           ctx.fill();
 
           // Runner sprite by state; falls back to the vector-drawn runner
-          // until the PNG assets exist in /public
-          const spriteKey = isSliding ? 'slide' : isFlying ? 'fly' : isJumping ? 'jump' : 'run';
+          // until the PNG assets exist in /public/assets. Running alternates
+          // between the two run frames every 150ms.
+          const runFrame = Math.floor(Date.now() / 150) % 2 === 0 ? 'run-1' : 'run-2';
+          const spriteKey = isSliding ? 'slide' : isFlying ? 'fly' : isJumping ? 'jump' : runFrame;
           const sprite = runnerImgsRef.current[spriteKey];
 
           ctx.save();
@@ -481,7 +485,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             const h = 170;
             const w = (h * sprite.naturalWidth) / sprite.naturalHeight;
             // Gentle bob while running on the ground
-            const bob = spriteKey === 'run' ? Math.abs(Math.sin(Date.now() / 120)) * 6 : 0;
+            const bob = spriteKey.startsWith('run') ? Math.abs(Math.sin(Date.now() / 120)) * 6 : 0;
             ctx.drawImage(sprite, -w / 2, -h + 32 - bob, w, h);
           } else {
             // Vector Runner Body (Orange Jersey with number 127, Blue shorts,

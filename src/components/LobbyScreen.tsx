@@ -54,7 +54,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
         {/* Mascot Image */}
         <div className="floating-star mb-6 sm:mb-8">
           <img
-            src="/mascot-shiba.png"
+            src="/assets/mascot-shiba.png"
             alt="吉祥物柴犬跑者"
             className="w-56 h-56 sm:w-64 sm:h-64 object-contain drop-shadow-xl"
           />
