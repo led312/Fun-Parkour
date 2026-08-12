@@ -3,7 +3,7 @@ import { playButtonClick, playVictorySound } from '../utils/audio';
 
 interface ResultsScreenProps {
   score: number;
-  starsEarned: number;
+  coinsEarned: number;
   onReplay: () => void;
   onHome: () => void;
 }
@@ -18,7 +18,7 @@ interface ConfettiPiece {
 
 export const ResultsScreen: React.FC<ResultsScreenProps> = ({
   score,
-  starsEarned = 3,
+  coinsEarned,
   onReplay,
   onHome,
 }) => {
@@ -102,27 +102,14 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
             </div>
           </div>
 
-          {/* Stars Earned Pop Animation */}
-          <div className="flex gap-3 sm:gap-4 mt-1">
-            {[1, 2, 3].map((starNum) => (
-              <div
-                key={starNum}
-                className="star-pop"
-                style={{ animationDelay: `${0.2 + starNum * 0.2}s` }}
-              >
-                <span
-                  className={`material-symbols-outlined ${
-                    starNum === 2 ? 'text-6xl sm:text-7xl' : 'text-5xl sm:text-6xl'
-                  } ${
-                    starNum <= starsEarned
-                      ? 'text-[#FFD700] symbol-filled drop-shadow-[0_4px_0_#b39200]'
-                      : 'text-gray-300'
-                  }`}
-                >
-                  star
-                </span>
-              </div>
-            ))}
+          {/* Coins Collected This Run */}
+          <div className="flex items-center gap-2.5 bg-[#fff8e1] px-8 py-2.5 rounded-full border-4 border-[#ffd700] shadow-[0_6px_0_0_#e6c200] mt-1">
+            <span className="material-symbols-outlined text-[#ffd700] text-3xl symbol-filled drop-shadow-[0_2px_0_#b39200]">
+              monetization_on
+            </span>
+            <span className="font-extrabold text-2xl text-[#b39200]">
+              +{coinsEarned} 金币
+            </span>
           </div>
         </div>
 

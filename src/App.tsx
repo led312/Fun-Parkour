@@ -21,8 +21,8 @@ const DEFAULT_USER: UserProfile = {
   isGuest: false,
   score: 0,
   highScore: 0,
-  coins: 1250,
-  stars: 12,
+  coins: 0,
+  stars: 0,
   selectedAvatar: 'shiba',
   ownedItems: ['shiba'],
 };
@@ -47,7 +47,7 @@ export default function App() {
   const [user, setUser] = useState<UserProfile>(loadStoredUser);
 
   const [lastRunScore, setLastRunScore] = useState(0);
-  const [lastStarsEarned, setLastStarsEarned] = useState(0);
+  const [lastCoinsEarned, setLastCoinsEarned] = useState(0);
   // Standing-pose baseline captured on the calibration screen (null = the
   // game calibrates itself during the first second of play)
   const [poseBaseline, setPoseBaseline] = useState<PoseBaseline | null>(null);
@@ -67,17 +67,16 @@ export default function App() {
     setScreen('LOBBY');
   };
 
-  const handleGameOver = (finalScore: number, starsEarned: number) => {
+  const handleGameOver = (finalScore: number, coinsCollected: number) => {
     const newHigh = Math.max(user.highScore, finalScore);
     setUser((prev) => ({
       ...prev,
       score: finalScore,
       highScore: newHigh,
-      coins: prev.coins + Math.floor(finalScore / 10),
-      stars: prev.stars + starsEarned,
+      coins: prev.coins + coinsCollected,
     }));
     setLastRunScore(finalScore);
-    setLastStarsEarned(starsEarned);
+    setLastCoinsEarned(coinsCollected);
     setScreen('RESULTS');
   };
 
@@ -132,6 +131,7 @@ export default function App() {
             poseBaseline={poseBaseline}
             hasJetpack={user.ownedItems.includes('rocket_boost')}
             hasSuperShield={user.ownedItems.includes('shield_boost')}
+            hasScoreDoubler={user.ownedItems.includes('score_doubler')}
             onGameOver={handleGameOver}
             onPause={() => setIsPauseOpen(true)}
           />
@@ -140,7 +140,7 @@ export default function App() {
         {screen === 'RESULTS' && (
           <ResultsScreen
             score={lastRunScore}
-            starsEarned={lastStarsEarned}
+            coinsEarned={lastCoinsEarned}
             onReplay={() => setScreen('CALIBRATION')}
             onHome={() => setScreen('LOBBY')}
           />

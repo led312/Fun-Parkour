@@ -4,11 +4,12 @@ import { usePoseControl } from '../hooks/usePoseControl';
 import { PoseBaseline } from '../utils/poseDetector';
 
 interface GameplayScreenProps {
-  onGameOver: (finalScore: number, starsEarned: number) => void;
+  onGameOver: (finalScore: number, coinsCollected: number) => void;
   onPause: () => void;
   poseBaseline?: PoseBaseline | null;
-  hasJetpack?: boolean; // owned shop powerup: double-jump flight
-  hasSuperShield?: boolean; // owned shop powerup: +1 shield charge per run
+  hasJetpack?: boolean; // owned shop powerup: 5s opening flight through a coin sky
+  hasSuperShield?: boolean; // owned shop powerup: 10s shield at run start
+  hasScoreDoubler?: boolean; // owned shop powerup: 10s of 2x score at run start
 }
 
 // Runner sprite images (transparent PNGs in /public). While a sprite is
@@ -33,6 +34,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   poseBaseline = null,
   hasJetpack = false,
   hasSuperShield = false,
+  hasScoreDoubler = false,
 }) => {
   const [score, setScore] = useState(0);
   const [lane, setLane] = useState<number>(1); // 0, 1, 2
@@ -40,9 +42,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [isSliding, setIsSliding] = useState(false);
   const [hasShield, setHasShield] = useState(false);
   const [webcamActive, setWebcamActive] = useState(false);
-  const [shieldCharges, setShieldCharges] = useState(3 + (hasSuperShield ? 1 : 0));
+  const [shieldCharges, setShieldCharges] = useState(3);
   const [shieldRemaining, setShieldRemaining] = useState(0);
   const [isFlying, setIsFlying] = useState(false);
+  const [coinsCollected, setCoinsCollected] = useState(0);
+  const [scoreBoost, setScoreBoost] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -55,10 +59,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const jumpingRef = useRef(false);
   const slidingRef = useRef(false);
   const hasShieldRef = useRef(false);
-  const shieldChargesRef = useRef(3 + (hasSuperShield ? 1 : 0));
+  const shieldChargesRef = useRef(3);
   const shieldEndRef = useRef(0);
   const flyingRef = useRef(false);
-  const jetpackUsedRef = useRef(false); // one flight per run
+  const coinsRef = useRef(0);
+  const scoreMultRef = useRef(1);
+  const coinRainUntilRef = useRef(0); // jetpack opening flight window
   const runnerImgsRef = useRef<Partial<Record<keyof typeof RUNNER_SPRITES, HTMLImageElement>>>({});
 
   // Preload runner sprites once; missing files just keep the vector fallback
@@ -71,6 +77,34 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       };
     });
   }, []);
+
+  // Purchased powerups kick in at run start: jetpack = 5s opening flight
+  // through a sky full of coins, score doubler = 10s of double score
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    if (hasJetpack) {
+      flyingRef.current = true;
+      setIsFlying(true);
+      coinRainUntilRef.current = Date.now() + 5000;
+      timers.push(
+        setTimeout(() => {
+          flyingRef.current = false;
+          setIsFlying(false);
+        }, 5000),
+      );
+    }
+    if (hasScoreDoubler) {
+      scoreMultRef.current = 2;
+      setScoreBoost(true);
+      timers.push(
+        setTimeout(() => {
+          scoreMultRef.current = 1;
+          setScoreBoost(false);
+        }, 10000),
+      );
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [hasJetpack, hasScoreDoubler]);
 
   // Keep a live copy of score so the game loop can report it on game over
   useEffect(() => {
@@ -126,21 +160,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
   // Shared action triggers (keyboard + pose control)
   const triggerJump = useCallback(() => {
-    if (flyingRef.current) return;
-    if (jumpingRef.current) {
-      // Double jump fires the purchased jetpack: 5s flight, one charge per run
-      if (hasJetpack && !jetpackUsedRef.current) {
-        jetpackUsedRef.current = true;
-        flyingRef.current = true;
-        setIsFlying(true);
-        playVictorySound();
-        setTimeout(() => {
-          flyingRef.current = false;
-          setIsFlying(false);
-        }, 5000);
-      }
-      return;
-    }
+    if (flyingRef.current || jumpingRef.current) return;
     jumpingRef.current = true;
     setIsJumping(true);
     playJumpSound();
@@ -148,7 +168,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       jumpingRef.current = false;
       setIsJumping(false);
     }, 650);
-  }, [hasJetpack]);
+  }, []);
 
   const triggerSlide = useCallback(() => {
     if (slidingRef.current) return;
@@ -170,6 +190,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     shieldEndRef.current = Date.now() + 10000;
     playVictorySound();
   }, []);
+
+  // Purchased super shield: auto-activate a 10s shield at run start
+  useEffect(() => {
+    if (hasSuperShield) activateShield();
+  }, [hasSuperShield, activateShield]);
 
   // Shield countdown / expiry
   useEffect(() => {
@@ -222,10 +247,11 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   // Game loop & spawner
   useEffect(() => {
     let lastSpawn = Date.now();
+    let lastCoinRain = 0;
     // Queued spawns: coin strings trickle in one coin at a time (same lane)
     const spawnQueue: { type: Obstacle['type']; lane: number; at: number }[] = [];
     let scoreInterval = setInterval(() => {
-      setScore((s) => s + 20);
+      setScore((s) => s + 20 * scoreMultRef.current);
     }, 100);
 
     const runLoop = () => {
@@ -263,6 +289,20 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         }
       }
 
+      // Jetpack opening flight: rain coins across all three lanes so the
+      // sky is full of pickups while airborne
+      if (now < coinRainUntilRef.current && now - lastCoinRain > 150) {
+        lastCoinRain = now;
+        for (let laneIdx = 0; laneIdx < 3; laneIdx++) {
+          obstaclesRef.current.push({
+            id: nextIdRef.current++,
+            lane: laneIdx,
+            z: 100,
+            type: 'coin',
+          });
+        }
+      }
+
       // Update positions
       const speed = 0.815;
       obstaclesRef.current.forEach((obs) => {
@@ -284,13 +324,15 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             if (obs.type === 'coin') {
               obs.collected = true;
               playCoinSound();
-              setScore((s) => s + 50);
+              coinsRef.current += 1;
+              setCoinsCollected(coinsRef.current);
+              setScore((s) => s + 50 * scoreMultRef.current);
             } else if (obs.type === 'cone' || obs.type === 'hurdle') {
               if (flyingRef.current) {
                 // Jetpack flight carries the runner over everything
               } else if (isJumping && obs.type === 'hurdle') {
                 // Avoided hurdle by jumping!
-                setScore((s) => s + 30);
+                setScore((s) => s + 30 * scoreMultRef.current);
               } else if (hasShield) {
                 // Shield absorbs one hit, then breaks
                 obs.collected = true;
@@ -299,7 +341,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               } else {
                 // Hit an obstacle: run ends
                 gameOverRef.current = true;
-                onGameOver(scoreRef.current, 0);
+                onGameOver(scoreRef.current, coinsRef.current);
               }
             }
           }
@@ -558,6 +600,18 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           <span className="font-bold text-xs uppercase text-blue-100">得分</span>
           <span className="font-extrabold text-xl sm:text-2xl">{score.toLocaleString()}</span>
         </div>
+        {/* Score Doubler Badge (first 10s after purchase) */}
+        {scoreBoost && (
+          <div className="absolute right-0 top-14 bg-[#ff7a00] text-[#5c2800] px-4 py-1 rounded-full border-4 border-white shadow-lg font-extrabold text-sm">
+            得分 x2
+          </div>
+        )}
+      </div>
+
+      {/* Coin Counter (top-left, below the camera feed) */}
+      <div className="absolute top-[10.5rem] left-4 z-20 bg-[#ffd700] text-[#5c2800] px-4 py-1.5 rounded-full border-4 border-white shadow-lg flex items-center gap-1.5 pointer-events-none">
+        <span className="material-symbols-outlined text-lg symbol-filled">monetization_on</span>
+        <span className="font-extrabold text-lg">{coinsCollected}</span>
       </div>
 
       {/* Picture-in-Picture Motion Camera Feed Container */}
