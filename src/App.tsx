@@ -16,7 +16,7 @@ const USER_KEY = 'kidrun.user';
 const SESSION_KEY = 'kidrun.session';
 
 const DEFAULT_USER: UserProfile = {
-  name: 'Speedy Runner',
+  name: '小跑手',
   parentEmail: '',
   isGuest: false,
   score: 0,

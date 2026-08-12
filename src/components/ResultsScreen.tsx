@@ -67,7 +67,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
         {/* Bubbly Header: AWESOME JOB! */}
         <div className="text-center mb-6">
           <h1 className="font-extrabold text-4xl sm:text-5xl text-[#ff7a00] drop-shadow-[4px_4px_0_#753400] flex justify-center gap-1.5 sm:gap-2">
-            {'AWESOME'.split('').map((char, index) => (
+            {'太棒了'.split('').map((char, index) => (
               <span
                 key={index}
                 className="bouncy-text"
@@ -78,7 +78,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
             ))}
           </h1>
           <h2 className="font-extrabold text-3xl sm:text-4xl text-[#0057c1] drop-shadow-[2px_2px_0_#001a43] mt-1">
-            JOB!
+            干得漂亮!
           </h2>
         </div>
 
@@ -95,7 +95,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
           {/* Total Score Section */}
           <div className="text-center w-full">
             <p className="font-bold text-xs sm:text-sm text-[#584235] uppercase tracking-widest mb-1.5">
-              TOTAL SCORE
+              总得分
             </p>
             <div className="bg-[#d9e2ff] text-[#001a43] px-8 sm:px-10 py-2.5 sm:py-3 rounded-full border-4 border-white shadow-[0_6px_0_0_#afc6ff] font-extrabold text-2xl sm:text-3xl inline-block">
               {score.toLocaleString()}
@@ -140,7 +140,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
               <span className="material-symbols-outlined text-3xl sm:text-4xl symbol-filled">
                 replay
               </span>
-              <span>REPLAY</span>
+              <span>再来一次</span>
             </div>
           </button>
 
@@ -156,7 +156,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
               <span className="material-symbols-outlined text-3xl sm:text-4xl">
                 home
               </span>
-              <span>HOME</span>
+              <span>回首页</span>
             </div>
           </button>
         </div>

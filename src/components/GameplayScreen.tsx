@@ -473,8 +473,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           ctx.textAlign = 'center';
           ctx.strokeStyle = '#ffffff';
           ctx.lineWidth = 4;
-          ctx.strokeText('GO!', 0, -125);
-          ctx.fillText('GO!', 0, -125);
+          ctx.strokeText('冲!', 0, -125);
+          ctx.fillText('冲!', 0, -125);
 
           ctx.restore();
 
@@ -519,7 +519,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       <div className="absolute top-4 left-4 right-4 pointer-events-none z-20">
         {/* Right Score Badge */}
         <div className="absolute right-0 bg-[#006ef1] text-white px-5 py-2 rounded-full border-4 border-white shadow-lg flex items-center gap-1.5">
-          <span className="font-bold text-xs uppercase text-blue-100">SCORE</span>
+          <span className="font-bold text-xs uppercase text-blue-100">得分</span>
           <span className="font-extrabold text-xl sm:text-2xl">{score.toLocaleString()}</span>
         </div>
       </div>
@@ -539,7 +539,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
               <span className="material-symbols-outlined text-3xl text-emerald-400 animate-bounce">
                 accessibility_new
               </span>
-              <p className="font-bold text-[10px] uppercase mt-1">Camera Off - Keyboard Mode</p>
+              <p className="font-bold text-[10px] uppercase mt-1">摄像头关闭 - 键盘模式</p>
             </div>
           )}
 
@@ -563,16 +563,16 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             ></div>
             <span className="text-white text-[9px] font-bold uppercase">
               {poseStatus === 'active'
-                ? 'POSE TRACKING'
+                ? '体感追踪中'
                 : poseStatus === 'loading'
-                  ? 'LOADING AI...'
-                  : 'KEYBOARD MODE'}
+                  ? '加载 AI...'
+                  : '键盘模式'}
             </span>
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 bg-[#106e00]/90 py-1 text-center">
             <p className="text-white text-[10px] font-extrabold uppercase tracking-tight">
-              MOVE TO RUN!
+              动起来,开跑!
             </p>
           </div>
       </div>
@@ -588,7 +588,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         >
           <span className="material-symbols-outlined text-lg symbol-filled">shield</span>
           <span className="font-extrabold text-sm uppercase">
-            {hasShield ? `SHIELD ${shieldRemaining}s` : `SHIELD x${shieldCharges}`}
+            {hasShield ? `护盾 ${shieldRemaining}秒` : `护盾 x${shieldCharges}`}
           </span>
         </div>
         {hasShield && (

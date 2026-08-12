@@ -33,7 +33,7 @@ export const Header: React.FC<HeaderProps> = ({
                 bolt
               </span>
               <h1 className="font-extrabold text-2xl sm:text-3xl text-[#994700] tracking-tighter drop-shadow-[0_3px_0_rgba(153,71,0,1)]">
-                KINETIC BOUNCE
+                动感跑酷
               </h1>
             </>
           ) : (
@@ -42,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
                 favorite
               </span>
               <h1 className="font-extrabold text-2xl sm:text-3xl text-[#994700] tracking-tight drop-shadow-[0_3px_0_rgba(153,71,0,1)]">
-                KID-RUN!
+                儿童酷跑!
               </h1>
             </>
           )}
@@ -58,7 +58,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="cursor-pointer bg-[#ff7a00] text-[#5c2800] px-4 py-1.5 rounded-full border-2 border-white shadow-[0_3px_0_0_#753400] font-bold text-sm sm:text-base hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5"
             >
               <span className="material-symbols-outlined text-amber-900 text-lg symbol-filled">stars</span>
-              <span>Score: {score.toLocaleString()}</span>
+              <span>得分:{score.toLocaleString()}</span>
             </div>
           ) : (
             <button
@@ -67,7 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
                 onProfileClick();
               }}
               className="transition-transform duration-200 active:scale-95 hover:scale-110 p-1 text-[#584235]"
-              title="Account"
+              title="账号"
             >
               <span className="material-symbols-outlined text-3xl">account_circle</span>
             </button>

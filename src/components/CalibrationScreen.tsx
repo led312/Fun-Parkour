@@ -45,11 +45,11 @@ interface GestureStep {
 
 // Every move the parkour game needs, tested in order during calibration
 const GESTURE_STEPS: GestureStep[] = [
-  { id: 'jump', label: 'JUMP!', hint: 'Jump up high!', icon: 'arrow_upward' },
-  { id: 'squat', label: 'SQUAT!', hint: 'Squat down low!', icon: 'arrow_downward' },
-  { id: 'left', label: 'GO LEFT!', hint: 'Step to your left!', icon: 'arrow_back' },
-  { id: 'right', label: 'GO RIGHT!', hint: 'Step to your right!', icon: 'arrow_forward' },
-  { id: 'jack', label: 'JUMPING JACK!', hint: 'Arms up & legs wide - shield power!', icon: 'shield' },
+  { id: 'jump', label: '跳一跳!', hint: '用力向上跳!', icon: 'arrow_upward' },
+  { id: 'squat', label: '蹲一蹲!', hint: '快速蹲下!', icon: 'arrow_downward' },
+  { id: 'left', label: '向左移!', hint: '向你的左边移动!', icon: 'arrow_back' },
+  { id: 'right', label: '向右移!', hint: '向你的右边移动!', icon: 'arrow_forward' },
+  { id: 'jack', label: '开合跳!', hint: '举起双手、叉开双腿 - 开启护盾!', icon: 'shield' },
 ];
 
 const FRAME_MS = 80;
@@ -326,21 +326,21 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
 
   const currentStep = status === 'testing' ? GESTURE_STEPS[stepIndex] : null;
   const statusTitle: Record<CalibStatus, string> = {
-    loading: 'LOADING AI...',
-    searching: 'STEP INTO FRAME!',
-    calibrating: 'HOLD STILL...',
+    loading: '加载 AI 中...',
+    searching: '站进画面里!',
+    calibrating: '保持不动...',
     testing: currentStep?.label ?? '',
-    ready: 'ALL MOVES OK!',
-    unavailable: 'AI UNAVAILABLE',
+    ready: '动作全部完成!',
+    unavailable: 'AI 加载失败',
   };
 
   const statusHint: Record<CalibStatus, string> = {
-    loading: 'Warming up the pose detector...',
-    searching: 'Step back so your head and feet are visible!',
-    calibrating: 'Stand straight while we learn your pose!',
+    loading: '正在准备动作识别...',
+    searching: '退后一点,让头和脚都出现在画面里!',
+    calibrating: '站直别动,让我们记住你的姿势!',
     testing: currentStep?.hint ?? '',
-    ready: 'Every move detected. Getting ready to run...',
-    unavailable: 'Pose AI failed to load. Retrying - keyboard controls work too.',
+    ready: '所有动作都识别成功,准备开跑...',
+    unavailable: '动作识别加载失败,正在重试 - 也可以用键盘玩。',
   };
 
   return (
@@ -358,7 +358,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
         ) : (
           <img
             src="/calibration-bg.jpg"
-            alt="Playroom Calibration Background"
+            alt="校准背景"
             className="w-full h-full object-cover object-center opacity-80"
           />
         )}
@@ -444,7 +444,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
               onClick={handleStartCalibration}
               className="w-full py-4 rounded-2xl font-extrabold text-2xl border-b-8 transition-all shadow-xl bg-[#ff7a00] hover:brightness-110 text-[#5c2800] border-[#753400] active:scale-95"
             >
-              START WITH KEYBOARD
+              用键盘开始
             </button>
           )}
         </div>
@@ -457,7 +457,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
             key={countdown}
             className="font-extrabold text-white text-9xl drop-shadow-[0_8px_0_rgba(0,0,0,0.45)] animate-in zoom-in duration-300"
           >
-            {countdown > 0 ? countdown : 'GO!'}
+            {countdown > 0 ? countdown : '出发!'}
           </span>
         </div>
       )}
@@ -469,7 +469,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
           onPause();
         }}
         className="fixed bottom-6 right-6 z-30 bg-[#0057c1] text-white rounded-full p-3.5 border-4 border-white shadow-[0_5px_0_0_#001a43] active:translate-y-1 hover:scale-105 transition-all"
-        title="Pause"
+        title="暂停"
       >
         <span className="material-symbols-outlined text-3xl">pause</span>
       </button>

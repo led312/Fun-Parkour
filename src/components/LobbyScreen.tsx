@@ -31,7 +31,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
       <div className="absolute inset-0 -z-10 overflow-hidden">
         <img
           src="/lobby-bg.jpg"
-          alt="City Parkour Track"
+          alt="城市跑酷赛道"
           className="w-full h-full object-cover object-center opacity-90"
         />
         <div className="absolute inset-0 bg-white/10 backdrop-brightness-105"></div>
@@ -45,7 +45,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
       >
         <span className="material-symbols-outlined text-white symbol-filled">stars</span>
         <span className="font-extrabold text-sm uppercase tracking-wider">
-          New High Score: {user.highScore}!
+          新纪录:{user.highScore}!
         </span>
       </div>
 
@@ -55,7 +55,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
         <div className="floating-star mb-6 sm:mb-8">
           <img
             src="/mascot-shiba.png"
-            alt="Mascot Shiba Runner"
+            alt="吉祥物柴犬跑者"
             className="w-56 h-56 sm:w-64 sm:h-64 object-contain drop-shadow-xl"
           />
         </div>
@@ -73,7 +73,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
               play_arrow
             </span>
             <span className="font-extrabold text-2xl sm:text-3xl tracking-wider">
-              START
+              开始
             </span>
           </button>
         </div>
@@ -88,7 +88,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             className="flex-1 bg-[#0057c1] hover:brightness-110 active:scale-95 text-white rounded-2xl px-6 py-3.5 flex items-center justify-center gap-2 border-b-8 border-[#001a43] shadow-xl transition-all"
           >
             <span className="material-symbols-outlined text-2xl symbol-filled">storefront</span>
-            <span className="font-extrabold text-lg tracking-wider">SHOP</span>
+            <span className="font-extrabold text-lg tracking-wider">商店</span>
           </button>
           <button
             onClick={() => {
@@ -98,7 +98,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             className="flex-1 bg-[#0057c1] hover:brightness-110 active:scale-95 text-white rounded-2xl px-6 py-3.5 flex items-center justify-center gap-2 border-b-8 border-[#001a43] shadow-xl transition-all"
           >
             <span className="material-symbols-outlined text-2xl symbol-filled">settings</span>
-            <span className="font-extrabold text-lg tracking-wider">SETTINGS</span>
+            <span className="font-extrabold text-lg tracking-wider">设置</span>
           </button>
         </div>
       </div>

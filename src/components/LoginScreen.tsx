@@ -94,10 +94,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </span>
         </div>
         <h2 className="font-extrabold text-4xl sm:text-5xl text-[#161d1f] mb-2 tracking-tight">
-          Welcome Runner!
+          欢迎,小跑手!
         </h2>
         <p className="font-semibold text-lg sm:text-xl text-[#584235] flex items-center justify-center gap-1">
-          Ready to jump, run, and play?
+          准备好跳跃、奔跑、玩耍了吗?
           <span className="material-symbols-outlined text-2xl text-[#0057c1]">directions_run</span>
         </p>
       </div>
@@ -216,7 +216,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             info
           </span>
           <p className="font-bold text-xs sm:text-sm text-[#584235] uppercase tracking-wide">
-            Grown-ups, help your runner get started!
+            爸爸妈妈,快帮小跑手开始游戏吧!
           </p>
         </div>
       </div>

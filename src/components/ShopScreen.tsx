@@ -16,33 +16,33 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
   const shopItems: ShopItem[] = [
     {
       id: 'shiba',
-      name: 'Shiba Parkour Dog',
+      name: '跑酷柴犬',
       type: 'avatar',
-      description: 'Energetic parkour puppy with orange headband!',
+      description: '活力满满的跑酷小狗,戴着橙色发带!',
       cost: 500,
       imageUrl: '/mascot-shiba.png',
     },
     {
       id: 'kinetic_hero',
-      name: 'Kinetic Hero Girl',
+      name: '动感女跑手',
       type: 'avatar',
-      description: 'Fast track runner wearing bib 127!',
+      description: '跑得飞快的 127 号选手!',
       cost: 800,
       icon: 'directions_run',
     },
     {
       id: 'shield_boost',
-      name: 'Super Shield',
+      name: '超级护盾',
       type: 'powerup',
-      description: '+1 shield charge on every run.',
+      description: '每局护盾次数 +1。',
       cost: 300,
       icon: 'shield',
     },
     {
       id: 'rocket_boost',
-      name: 'Rocket Jetpack',
+      name: '火箭喷气背包',
       type: 'powerup',
-      description: 'Double-jump to fly over everything for 5s, once per run!',
+      description: '跳跃中再跳一次,飞行 5 秒越过一切,每局一次!',
       cost: 1000,
       icon: 'rocket_launch',
     },
@@ -68,7 +68,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
             <span className="material-symbols-outlined text-[#ff7a00] text-3xl symbol-filled">
               storefront
             </span>
-            <h2 className="font-extrabold text-2xl text-[#994700]">RUNNER SHOP</h2>
+            <h2 className="font-extrabold text-2xl text-[#994700]">跑酷商店</h2>
           </div>
           
           <button
@@ -88,13 +88,13 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
             <span className="material-symbols-outlined text-[#ffd700] text-2xl symbol-filled">
               monetization_on
             </span>
-            <span className="font-extrabold text-lg text-[#161d1f]">{user.coins} Coins</span>
+            <span className="font-extrabold text-lg text-[#161d1f]">{user.coins} 金币</span>
           </div>
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[#ff7a00] text-2xl symbol-filled">
               stars
             </span>
-            <span className="font-extrabold text-lg text-[#161d1f]">{user.stars} Stars</span>
+            <span className="font-extrabold text-lg text-[#161d1f]">{user.stars} 星星</span>
           </div>
         </div>
 
@@ -128,7 +128,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
 
               {user.selectedAvatar === item.id ? (
                 <span className="bg-[#20b900] text-white text-xs font-extrabold px-3 py-1.5 rounded-full border border-white">
-                  EQUIPPED
+                  已装备
                 </span>
               ) : user.ownedItems.includes(item.id) ? (
                 item.type === 'avatar' ? (
@@ -139,11 +139,11 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
                     }}
                     className="bg-[#0057c1] text-white text-xs font-extrabold px-4 py-2 rounded-xl border-b-4 border-[#001a43] active:scale-95"
                   >
-                    SELECT
+                    选择
                   </button>
                 ) : (
                   <span className="bg-[#20b900] text-white text-xs font-extrabold px-3 py-1.5 rounded-full border border-white">
-                    OWNED
+                    已拥有
                   </span>
                 )
               ) : (
