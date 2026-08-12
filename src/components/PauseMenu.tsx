@@ -41,8 +41,8 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
               <p className="font-bold text-[#ff7a00] mt-2">⭐ 游戏目标:</p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>收集金币,躲开锥桶和栏架,跑出最高分!</li>
-                <li>护盾每局 3 次,持续 10 秒,可抵挡一次撞击。</li>
-                <li>商店道具:喷气背包(开局飞行 5 秒,天上全是金币)、超级护盾(开局自动获得 10 秒护盾)、分数加倍(开局 10 秒得分 x2)。</li>
+                <li>护盾:前 3 次免费试用(开合跳开启,持续 10 秒,抵挡一次撞击),用完后需在商店购买。</li>
+                <li>商店道具(均为一次性):喷气背包(开局飞行 5 秒,天上全是金币)、超级护盾(下一局开合跳护盾 +1 次)、分数加倍(开局 10 秒得分 x2)。</li>
               </ul>
             </div>
             <button

@@ -1,18 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { UserProfile, ShopItem } from '../types';
 import { playButtonClick, playVictorySound } from '../utils/audio';
 import { assetUrl } from '../utils/assets';
+
+// Permanent duration upgrades: base seconds + 5s per level, cost doubles
+// every level starting at 1000 coins.
+const UPGRADEABLE_ITEMS = [
+  { id: 'rocket_boost', name: '喷气背包', icon: 'rocket_launch', baseSeconds: 5, effect: '开局飞行' },
+  { id: 'shield_boost', name: '超级护盾', icon: 'shield', baseSeconds: 10, effect: '护盾持续' },
+  { id: 'score_doubler', name: '分数加倍', icon: 'bolt', baseSeconds: 10, effect: '得分 x2 持续' },
+] as const;
+
+const upgradeCost = (level: number) => 1000 * 2 ** level;
 
 interface ShopScreenProps {
   user: UserProfile;
   onUpdateUser: (updatedUser: Partial<UserProfile>) => void;
   onClose: () => void;
+  onOpenPacman: () => void;
 }
 
 export const ShopScreen: React.FC<ShopScreenProps> = ({
   user,
   onUpdateUser,
   onClose,
+  onOpenPacman,
 }) => {
   const shopItems: ShopItem[] = [
     {
@@ -35,7 +47,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       id: 'shield_boost',
       name: '超级护盾',
       type: 'powerup',
-      description: '开局自动获得 10 秒护盾。',
+      description: '一次性:下一局开合跳可开启 1 次护盾,持续 10 秒。',
       cost: 300,
       icon: 'shield',
     },
@@ -43,7 +55,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       id: 'rocket_boost',
       name: '火箭喷气背包',
       type: 'powerup',
-      description: '开局自动飞行 5 秒,天上全是金币!',
+      description: '一次性:下一局开局自动飞行 5 秒,天上全是金币!',
       cost: 1000,
       icon: 'rocket_launch',
     },
@@ -51,7 +63,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       id: 'score_doubler',
       name: '分数加倍',
       type: 'powerup',
-      description: '开局 10 秒内得分 x2。',
+      description: '一次性:下一局开局 10 秒内得分 x2。',
       cost: 1500,
       icon: 'bolt',
     },
@@ -65,6 +77,19 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       coins: user.coins - item.cost,
       ownedItems: [...user.ownedItems, item.id],
       selectedAvatar: item.type === 'avatar' ? item.id : user.selectedAvatar,
+    });
+  };
+
+  const [tab, setTab] = useState<'buy' | 'upgrade'>('buy');
+
+  const handleUpgrade = (id: string, level: number) => {
+    playButtonClick();
+    const cost = upgradeCost(level);
+    if (user.coins < cost) return;
+    playVictorySound();
+    onUpdateUser({
+      coins: user.coins - cost,
+      upgrades: { ...user.upgrades, [id]: level + 1 },
     });
   };
 
@@ -101,7 +126,28 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
           </div>
         </div>
 
+        {/* Buy / Upgrade Tabs */}
+        <div className="flex gap-2 mb-5">
+          {([['buy', '购买道具'], ['upgrade', '道具升级']] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => {
+                playButtonClick();
+                setTab(key);
+              }}
+              className={`flex-1 py-2.5 rounded-xl font-extrabold text-sm border-b-4 transition-all active:scale-95 ${
+                tab === key
+                  ? 'bg-[#ff7a00] text-[#5c2800] border-[#753400]'
+                  : 'bg-[#e8eff1] text-[#584235] border-[#c9d4d8]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Shop Items List */}
+        {tab === 'buy' ? (
         <div className="space-y-4">
           {shopItems.map((item) => (
             <div
@@ -166,6 +212,66 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
             </div>
           ))}
         </div>
+        ) : (
+        /* Powerup Duration Upgrades */
+        <div className="space-y-4">
+          {UPGRADEABLE_ITEMS.map((item) => {
+            const level = user.upgrades[item.id] ?? 0;
+            const cost = upgradeCost(level);
+            const seconds = item.baseSeconds + 5 * level;
+            return (
+              <div
+                key={item.id}
+                className="bg-[#f4fafd] rounded-2xl p-4 border-2 border-[#e0c0af] flex items-center justify-between gap-4 shadow-sm hover:border-[#0057c1] transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-xl bg-[#994700] text-white flex items-center justify-center border-2 border-white">
+                    <span className="material-symbols-outlined text-3xl symbol-filled">
+                      {item.icon}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="font-extrabold text-lg text-[#161d1f]">
+                      {item.name}
+                      <span className="ml-2 text-xs bg-[#0057c1] text-white px-2 py-0.5 rounded-full">
+                        Lv.{level}
+                      </span>
+                    </h3>
+                    <p className="text-xs text-[#584235] leading-tight">
+                      {item.effect} {seconds} 秒 → 升级后 {seconds + 5} 秒
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleUpgrade(item.id, level)}
+                  disabled={user.coins < cost}
+                  className={`text-xs font-extrabold px-4 py-2 rounded-xl border-b-4 flex items-center gap-1 active:scale-95 ${
+                    user.coins >= cost
+                      ? 'bg-[#ff7a00] text-[#5c2800] border-[#753400] hover:brightness-110'
+                      : 'bg-gray-300 text-gray-500 border-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-sm symbol-filled">monetization_on</span>
+                  <span>{cost}</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        )}
+
+        {/* Motion Pac-Man Mini Game Entry */}
+        <button
+          onClick={() => {
+            playButtonClick();
+            onOpenPacman();
+          }}
+          className="mt-6 w-full bg-[#20b900] hover:brightness-110 text-white rounded-2xl px-6 py-4 flex items-center justify-center gap-3 border-b-8 border-[#0d4d00] shadow-xl transition-all active:scale-95"
+        >
+          <span className="material-symbols-outlined text-3xl symbol-filled">play_circle</span>
+          <span className="font-extrabold text-xl">体感吃豆人</span>
+        </button>
       </div>
     </div>
   );
