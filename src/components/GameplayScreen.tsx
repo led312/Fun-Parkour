@@ -15,6 +15,7 @@ interface GameplayScreenProps {
   jetpackDurationMs?: number; // upgraded opening flight duration
   shieldDurationMs?: number; // upgraded shield duration
   boostDurationMs?: number; // upgraded score-doubler duration
+  onConsumeJetpack?: () => void; // called when the one-time jetpack fires
 }
 
 // Runner sprite images (transparent PNGs in /public/assets). Running
@@ -46,6 +47,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   jetpackDurationMs = 5000,
   shieldDurationMs = 10000,
   boostDurationMs = 10000,
+  onConsumeJetpack,
 }) => {
   const [score, setScore] = useState(0);
   const [lane, setLane] = useState<number>(1); // 0, 1, 2
@@ -96,7 +98,9 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   }, []);
 
   // Purchased powerups kick in at run start: jetpack = 5s opening flight
-  // through a sky full of coins, score doubler = 10s of double score
+  // through a sky full of coins, score doubler = 10s of double score.
+  // Mount-only: the jetpack is consumed the moment it fires, so the prop
+  // flips false mid-run and must not re-run this effect.
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = [];
     if (hasJetpack) {
@@ -104,6 +108,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       setIsFlying(true);
       flyStartRef.current = Date.now();
       coinRainUntilRef.current = Date.now() + jetpackDurationMs;
+      onConsumeJetpack?.();
       timers.push(
         setTimeout(() => {
           flyingRef.current = false;
@@ -123,7 +128,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       );
     }
     return () => timers.forEach(clearTimeout);
-  }, [hasJetpack, hasScoreDoubler, jetpackDurationMs, boostDurationMs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keep a live copy of score so the game loop can report it on game over
   useEffect(() => {
@@ -163,7 +169,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
   // Webcam init
   useEffect(() => {
-    navigator.mediaDevices?.getUserMedia({ video: true })
+    navigator.mediaDevices?.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } } })
       .then((stream) => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -271,9 +277,10 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     let lastCoinRain = 0;
     // Queued spawns: coin strings trickle in one coin at a time (same lane)
     const spawnQueue: { type: Obstacle['type']; lane: number; at: number }[] = [];
+    // Score ticks every 200ms: halves React re-renders versus a 100ms tick
     let scoreInterval = setInterval(() => {
-      setScore((s) => s + 20 * scoreMultRef.current);
-    }, 100);
+      setScore((s) => s + 40 * scoreMultRef.current);
+    }, 200);
 
     const runLoop = () => {
       const now = Date.now();

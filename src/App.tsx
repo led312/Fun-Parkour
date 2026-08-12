@@ -146,6 +146,12 @@ export default function App() {
             jetpackDurationMs={5000 + 5000 * (user.upgrades['rocket_boost'] ?? 0)}
             shieldDurationMs={10000 + 5000 * (user.upgrades['shield_boost'] ?? 0)}
             boostDurationMs={10000 + 5000 * (user.upgrades['score_doubler'] ?? 0)}
+            onConsumeJetpack={() =>
+              setUser((u) => ({
+                ...u,
+                ownedItems: u.ownedItems.filter((id) => id !== 'rocket_boost'),
+              }))
+            }
             onGameOver={handleGameOver}
             onPause={() => setIsPauseOpen(true)}
           />

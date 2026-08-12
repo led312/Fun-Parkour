@@ -96,7 +96,7 @@ export const PacmanScreen: React.FC<PacmanScreenProps> = ({ poseBaseline = null,
 
   // Webcam init
   useEffect(() => {
-    navigator.mediaDevices?.getUserMedia({ video: true })
+    navigator.mediaDevices?.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } } })
       .then((stream) => {
         if (videoRef.current) videoRef.current.srcObject = stream;
         setWebcamActive(true);
