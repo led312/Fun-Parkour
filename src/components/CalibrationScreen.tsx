@@ -47,7 +47,6 @@ interface GestureStep {
 // Every move the parkour game needs, tested in order during calibration
 const GESTURE_STEPS: GestureStep[] = [
   { id: 'jump', label: '跳一跳!', hint: '用力向上跳!', icon: 'arrow_upward' },
-  { id: 'squat', label: '蹲一蹲!', hint: '快速蹲下!', icon: 'arrow_downward' },
   { id: 'left', label: '向左移!', hint: '向你的左边移动!', icon: 'arrow_back' },
   { id: 'right', label: '向右移!', hint: '向你的右边移动!', icon: 'arrow_forward' },
   { id: 'jack', label: '开合跳!', hint: '举起双手、叉开双腿 - 开启护盾!', icon: 'shield' },
@@ -85,7 +84,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
 
   useEffect(() => {
     // Try auto-enabling webcam for pose tracking experience
-    navigator.mediaDevices?.getUserMedia({ video: true })
+    navigator.mediaDevices?.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } } })
       .then((stream) => {
         streamRef.current = stream;
         setWebcamActive(true);
@@ -241,15 +240,15 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
               }
             }
           } else {
-            // Phase 2: gesture checklist (16% per gesture, 5 gestures).
-            // Runs even when hips are lost mid-frame: squat/jack don't need them.
+            // Phase 2: gesture checklist (20% per gesture, 4 gestures).
+            // Runs even when hips are lost mid-frame: jack doesn't need them.
             const step = GESTURE_STEPS[stepIndex];
             if (step && kps && detectGesture(step.id, kps, m, baselineRef.current)) {
               playCoinSound();
               squatFramesRef.current = 0;
               jackFramesRef.current = 0;
               const next = stepIndex + 1;
-              setProgress(20 + next * 16);
+              setProgress(20 + next * 20);
               if (next >= GESTURE_STEPS.length) {
                 setStatus('ready');
                 playVictorySound();

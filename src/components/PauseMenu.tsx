@@ -35,7 +35,6 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
               <ul className="list-disc pl-5 space-y-1">
                 <li><strong>左右移动身体:</strong>切换跑道。</li>
                 <li><strong>原地起跳:</strong>跳过栏架。</li>
-                <li><strong>快速下蹲:</strong>滑铲躲避障碍。</li>
                 <li><strong>开合跳:</strong>开启护盾!</li>
               </ul>
               <p className="font-bold text-[#ff7a00] mt-2">⭐ 游戏目标:</p>
