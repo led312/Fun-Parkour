@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types';
 import { playButtonClick } from '../utils/audio';
+import { assetUrl } from '../utils/assets';
 
 interface LobbyScreenProps {
   user: UserProfile;
@@ -30,7 +31,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
           fake UI buttons baked into the source image) */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
         <img
-          src="/assets/lobby-bg.jpg"
+          src={assetUrl('/assets/lobby-bg.jpg')}
           alt="城市跑酷赛道"
           className="w-full h-full object-cover object-center opacity-90"
         />
@@ -54,7 +55,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
         {/* Mascot Image */}
         <div className="floating-star mb-6 sm:mb-8">
           <img
-            src="/assets/mascot-shiba.png"
+            src={assetUrl('/assets/mascot-shiba.png')}
             alt="吉祥物柴犬跑者"
             className="w-56 h-56 sm:w-64 sm:h-64 object-contain drop-shadow-xl"
           />

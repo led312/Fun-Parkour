@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { playCoinSound, playJumpSound, playVictorySound } from '../utils/audio';
 import { usePoseControl } from '../hooks/usePoseControl';
 import { PoseBaseline } from '../utils/poseDetector';
+import { assetUrl } from '../utils/assets';
 
 interface GameplayScreenProps {
   onGameOver: (finalScore: number, coinsCollected: number) => void;
@@ -16,11 +17,11 @@ interface GameplayScreenProps {
 // alternates between two frames; any missing sprite falls back to the
 // vector-drawn runner.
 const RUNNER_SPRITES = {
-  'run-1': '/assets/runner-run-1.png',
-  'run-2': '/assets/runner-run-2.png',
-  jump: '/assets/runner-jump.png',
-  slide: '/assets/runner-slide.png',
-  fly: '/assets/runner-fly.png',
+  'run-1': assetUrl('/assets/runner-run-1.png'),
+  'run-2': assetUrl('/assets/runner-run-2.png'),
+  jump: assetUrl('/assets/runner-jump.png'),
+  slide: assetUrl('/assets/runner-slide.png'),
+  fly: assetUrl('/assets/runner-fly.png'),
 } as const;
 
 interface Obstacle {

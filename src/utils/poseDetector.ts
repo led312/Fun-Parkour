@@ -1,5 +1,6 @@
 // YOLO26n-pose browser-side inference via onnxruntime-web (WASM backend).
-// Loads the ONNX model from /models/yolo26n-pose.onnx and returns 17 COCO
+// Loads the ONNX model from /models/yolo26n-pose.onnx (or from
+// VITE_ASSET_BASE when assets are served from COS) and returns 17 COCO
 // keypoints in *mirrored* video coordinates (matching the on-screen PiP feed,
 // so "user moves left" == decreasing x).
 
@@ -15,6 +16,7 @@ import * as ort from 'onnxruntime-web/wasm';
 // two subpaths explicitly.
 import ortWasmModuleUrl from 'onnxruntime-web/ort-wasm-simd-threaded.mjs?url';
 import ortWasmBinaryUrl from 'onnxruntime-web/ort-wasm-simd-threaded.wasm?url';
+import { assetUrl, hasAssetBase } from './assets';
 
 export interface Keypoint {
   x: number;
@@ -43,7 +45,7 @@ export const KP = {
   RIGHT_ANKLE: 16,
 } as const;
 
-const MODEL_URL = '/models/yolo26n-pose.onnx';
+const MODEL_URL = assetUrl('/models/yolo26n-pose.onnx');
 const INPUT_SIZE = 640;
 const PERSON_CONF = 0.5;
 const KP_CONF = 0.5;
@@ -197,10 +199,19 @@ export function loadPoseModel(): Promise<ort.InferenceSession> {
     // initializes once globally, and any create issued while another is still
     // pending fails with "multiple calls to 'initWasm()' detected". The CDN
     // retry is therefore only chained after a genuinely settled failure.
-    sessionPromise = createSession({
-      mjs: ortWasmModuleUrl,
-      wasm: ortWasmBinaryUrl,
-    }).catch((e) => {
+    // With VITE_ASSET_BASE set, the 13MB wasm is served from the COS bucket
+    // (/wasm/...) alongside the model instead of the local origin.
+    sessionPromise = createSession(
+      hasAssetBase
+        ? {
+            mjs: assetUrl('/wasm/ort-wasm-simd-threaded.mjs'),
+            wasm: assetUrl('/wasm/ort-wasm-simd-threaded.wasm'),
+          }
+        : {
+            mjs: ortWasmModuleUrl,
+            wasm: ortWasmBinaryUrl,
+          },
+    ).catch((e) => {
       console.warn('Local ORT wasm failed, retrying with CDN copy:', e);
       return createSession({
         mjs: `${ORT_CDN_BASE}/ort-wasm-simd-threaded.mjs`,

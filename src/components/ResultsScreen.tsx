@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { playButtonClick, playVictorySound } from '../utils/audio';
+import { assetUrl } from '../utils/assets';
 
 interface ResultsScreenProps {
   score: number;
@@ -88,7 +89,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
           <div
             className="trophy-glow -mt-20 w-44 h-44 sm:w-48 sm:h-48 bg-cover bg-center rounded-full border-8 border-white shadow-xl"
             style={{
-              backgroundImage: `url('/assets/trophy.png')`,
+              backgroundImage: `url('${assetUrl('/assets/trophy.png')}')`,
             }}
           />
 

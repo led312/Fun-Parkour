@@ -16,6 +16,7 @@ import {
   measureShoulderY,
   PoseBaseline,
 } from '../utils/poseDetector';
+import { assetUrl } from '../utils/assets';
 
 interface CalibrationScreenProps {
   onCalibrationComplete: (baseline: PoseBaseline | null) => void;
@@ -334,7 +335,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
           />
         ) : (
           <img
-            src="/assets/lobby-bg.jpg"
+            src={assetUrl('/assets/lobby-bg.jpg')}
             alt="校准背景"
             className="w-full h-full object-cover object-center opacity-80"
           />

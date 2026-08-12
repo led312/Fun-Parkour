@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserProfile, ShopItem } from '../types';
 import { playButtonClick, playVictorySound } from '../utils/audio';
+import { assetUrl } from '../utils/assets';
 
 interface ShopScreenProps {
   user: UserProfile;
@@ -20,7 +21,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       type: 'avatar',
       description: '活力满满的跑酷小狗,戴着橙色发带!',
       cost: 500,
-      imageUrl: '/assets/mascot-shiba.png',
+      imageUrl: assetUrl('/assets/mascot-shiba.png'),
     },
     {
       id: 'kinetic_hero',
