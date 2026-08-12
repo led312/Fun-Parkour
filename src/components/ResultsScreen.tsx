@@ -88,7 +88,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
           <div
             className="trophy-glow -mt-20 w-44 h-44 sm:w-48 sm:h-48 bg-cover bg-center rounded-full border-8 border-white shadow-xl"
             style={{
-              backgroundImage: `url('/trophy.jpg')`,
+              backgroundImage: `url('/assets/trophy.png')`,
             }}
           />
 

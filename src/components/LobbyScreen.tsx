@@ -30,7 +30,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
           fake UI buttons baked into the source image) */}
       <div className="absolute inset-0 -z-10 overflow-hidden">
         <img
-          src="/lobby-bg.jpg"
+          src="/assets/lobby-bg.jpg"
           alt="城市跑酷赛道"
           className="w-full h-full object-cover object-center opacity-90"
         />

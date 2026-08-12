@@ -11,6 +11,15 @@ interface GameplayScreenProps {
   hasSuperShield?: boolean; // owned shop powerup: +1 shield charge per run
 }
 
+// Runner sprite images (transparent PNGs in /public). While a sprite is
+// missing, the game falls back to the vector-drawn runner.
+const RUNNER_SPRITES = {
+  run: '/runner-run.png',
+  jump: '/runner-jump.png',
+  slide: '/runner-slide.png',
+  fly: '/runner-fly.png',
+} as const;
+
 interface Obstacle {
   id: number;
   lane: number; // 0: Left, 1: Center, 2: Right
@@ -50,6 +59,18 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const shieldEndRef = useRef(0);
   const flyingRef = useRef(false);
   const jetpackUsedRef = useRef(false); // one flight per run
+  const runnerImgsRef = useRef<Partial<Record<keyof typeof RUNNER_SPRITES, HTMLImageElement>>>({});
+
+  // Preload runner sprites once; missing files just keep the vector fallback
+  useEffect(() => {
+    (Object.keys(RUNNER_SPRITES) as (keyof typeof RUNNER_SPRITES)[]).forEach((key) => {
+      const img = new Image();
+      img.src = RUNNER_SPRITES[key];
+      img.onload = () => {
+        runnerImgsRef.current[key] = img;
+      };
+    });
+  }, []);
 
   // Keep a live copy of score so the game loop can report it on game over
   useEffect(() => {
@@ -406,55 +427,70 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           ctx.ellipse(playerX, playerY + 75, 40 * runnerScale, 12 * runnerScale, 0, 0, Math.PI * 2);
           ctx.fill();
 
-          // Runner Body (Orange Jersey with number 127, Blue shorts, brown hair ponytail)
+          // Runner sprite by state; falls back to the vector-drawn runner
+          // until the PNG assets exist in /public
+          const spriteKey = isSliding ? 'slide' : isFlying ? 'fly' : isJumping ? 'jump' : 'run';
+          const sprite = runnerImgsRef.current[spriteKey];
+
           ctx.save();
           ctx.translate(playerX, playerY);
-          if (isSliding) {
-            // Squash & stretch crouch pose while sliding
-            ctx.scale(1.15, 0.6);
+          if (sprite) {
+            // Feet anchor matches the old vector runner (~32px below playerY)
+            const h = 170;
+            const w = (h * sprite.naturalWidth) / sprite.naturalHeight;
+            // Gentle bob while running on the ground
+            const bob = spriteKey === 'run' ? Math.abs(Math.sin(Date.now() / 120)) * 6 : 0;
+            ctx.drawImage(sprite, -w / 2, -h + 32 - bob, w, h);
+          } else {
+            // Vector Runner Body (Orange Jersey with number 127, Blue shorts,
+            // brown hair ponytail)
+            if (isSliding) {
+              // Squash & stretch crouch pose while sliding
+              ctx.scale(1.15, 0.6);
+            }
+
+            // Head / Hair
+            ctx.fillStyle = '#8b4513';
+            ctx.beginPath();
+            ctx.arc(0, -95, 26, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Ponytail
+            ctx.beginPath();
+            ctx.arc(0, -122, 14, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Headband
+            ctx.fillStyle = '#006ef1';
+            ctx.fillRect(-22, -100, 44, 8);
+
+            // Jersey (Orange)
+            ctx.fillStyle = '#ff7a00';
+            ctx.fillRect(-24, -65, 48, 42);
+
+            // Bib Number "127"
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(-18, -55, 36, 22);
+            ctx.fillStyle = '#001a43';
+            ctx.font = 'extrabold 15px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('127', 0, -38);
+
+            // Blue Shorts
+            ctx.fillStyle = '#0057c1';
+            ctx.fillRect(-22, -23, 44, 20);
+
+            // Running Legs
+            ctx.fillStyle = '#f5c29b';
+            const legOffset = (Math.sin(Date.now() / 60) * 15);
+            ctx.fillRect(-16, -3, 12, 25 + legOffset);
+            ctx.fillRect(4, -3, 12, 25 - legOffset);
+
+            // Shoes
+            ctx.fillStyle = '#ff7a00';
+            ctx.fillRect(-18, 22 + legOffset, 16, 10);
+            ctx.fillRect(2, 22 - legOffset, 16, 10);
           }
-
-          // Head / Hair
-          ctx.fillStyle = '#8b4513';
-          ctx.beginPath();
-          ctx.arc(0, -95, 26, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Ponytail
-          ctx.beginPath();
-          ctx.arc(0, -122, 14, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Headband
-          ctx.fillStyle = '#006ef1';
-          ctx.fillRect(-22, -100, 44, 8);
-
-          // Jersey (Orange)
-          ctx.fillStyle = '#ff7a00';
-          ctx.fillRect(-24, -65, 48, 42);
-
-          // Bib Number "127"
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(-18, -55, 36, 22);
-          ctx.fillStyle = '#001a43';
-          ctx.font = 'extrabold 15px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('127', 0, -38);
-
-          // Blue Shorts
-          ctx.fillStyle = '#0057c1';
-          ctx.fillRect(-22, -23, 44, 20);
-
-          // Running Legs
-          ctx.fillStyle = '#f5c29b';
-          const legOffset = (Math.sin(Date.now() / 60) * 15);
-          ctx.fillRect(-16, -3, 12, 25 + legOffset);
-          ctx.fillRect(4, -3, 12, 25 - legOffset);
-
-          // Shoes
-          ctx.fillStyle = '#ff7a00';
-          ctx.fillRect(-18, 22 + legOffset, 16, 10);
-          ctx.fillRect(2, 22 - legOffset, 16, 10);
 
           // Jetpack flame while flying
           if (isFlying) {

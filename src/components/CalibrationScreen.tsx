@@ -357,7 +357,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
           />
         ) : (
           <img
-            src="/calibration-bg.jpg"
+            src="/assets/lobby-bg.jpg"
             alt="校准背景"
             className="w-full h-full object-cover object-center opacity-80"
           />
