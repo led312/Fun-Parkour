@@ -58,6 +58,8 @@ type GameStatus = 'playing' | 'lost';
 export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, onExit }) => {
   const [score, setScore] = useState(0);
   const [status, setStatus] = useState<GameStatus>('playing');
+  const [endReason, setEndReason] = useState<'time' | 'full'>('full');
+  const [timeLeft, setTimeLeft] = useState(60);
   const [webcamActive, setWebcamActive] = useState(false);
   const [poseStatus, setPoseStatus] = useState<'loading' | 'active' | 'unavailable'>('loading');
   const [runId, setRunId] = useState(0);
@@ -85,7 +87,7 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
       x: Math.min(W - WALL - r, Math.max(WALL + r, dropXRef.current)),
       y: DROP_Y,
       vx: 0,
-      vy: 1,
+      vy: 15, // instant drop: fruits start at full falling speed
       level,
       bornAt: now,
     });
@@ -106,7 +108,7 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
 
   // Webcam init
   useEffect(() => {
-    navigator.mediaDevices?.getUserMedia({ video: true })
+    navigator.mediaDevices?.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } } })
       .then((stream) => {
         if (videoRef.current) videoRef.current.srcObject = stream;
         setWebcamActive(true);
@@ -125,7 +127,8 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
     const baselineRef = { current: poseBaseline as PoseBaseline | null };
     const samples: PoseBaseline[] = [];
     let calibrationStart = 0;
-    let prevHipY: number | null = null;
+    let squatFrames = 0;
+    let squatArmed = true;
 
     const tick = async () => {
       if (cancelled) return;
@@ -155,12 +158,20 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
                 const dxN = (sx - b.centerX) / b.shoulderW;
                 dropXRef.current = Math.min(W - WALL, Math.max(WALL, W / 2 + dxN * W * 1.4));
               }
+              // Squat to drop: shoulders clearly below baseline for 2 ticks,
+              // re-armed after standing back up
               const m = measureBaseline(kps);
               if (m) {
-                if (prevHipY !== null && prevHipY - m.hipY > 0.12 * b.torso) {
-                  dropFruitRef.current();
+                if (m.shoulderY > b.shoulderY + 0.2 * b.torso) {
+                  squatFrames += 1;
+                  if (squatFrames >= 2 && squatArmed) {
+                    squatArmed = false;
+                    dropFruitRef.current();
+                  }
+                } else {
+                  squatFrames = 0;
+                  if (m.shoulderY < b.shoulderY + 0.08 * b.torso) squatArmed = true;
                 }
-                prevHipY = m.hipY;
               }
             }
           }
@@ -214,10 +225,19 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
     bodiesRef.current = [];
     let raf = 0;
     let overLineFrames = 0;
+    const endAt = Date.now() + 60000; // one-minute round
 
     const loop = () => {
       const bodies = bodiesRef.current;
       const now = Date.now();
+
+      // Countdown drives the end of the round
+      const left = Math.max(0, Math.ceil((endAt - now) / 1000));
+      setTimeLeft((prev) => (prev === left ? prev : left));
+      if (left <= 0 && statusRef.current === 'playing') {
+        setEndReason('time');
+        setStatus('lost');
+      }
 
       if (statusRef.current === 'playing') {
         // Integrate + walls, 2 substeps for stability
@@ -308,7 +328,10 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
           (b) => now - b.bornAt > 1000 && b.y - FRUITS[b.level].r < LINE_Y && Math.abs(b.vy) < 1.5,
         );
         overLineFrames = danger ? overLineFrames + 1 : 0;
-        if (overLineFrames > 90) setStatus('lost');
+        if (overLineFrames > 90) {
+          setEndReason('full');
+          setStatus('lost');
+        }
       }
 
       // Render
@@ -396,6 +419,8 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
   const restart = () => {
     playButtonClick();
     setScore(0);
+    setTimeLeft(60);
+    setEndReason('full');
     setStatus('playing');
     currentRef.current = Math.floor(Math.random() * DROPPABLE);
     nextRef.current = Math.floor(Math.random() * DROPPABLE);
@@ -423,6 +448,14 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
 
       {/* Playfield */}
       <div className="relative w-full max-w-md rounded-2xl overflow-hidden border-4 border-white shadow-2xl">
+        {/* Round Countdown (top-left) */}
+        <div
+          className={`absolute top-2 left-2 z-10 px-3 py-1 rounded-full border-2 border-white shadow-lg font-extrabold text-sm ${
+            timeLeft <= 10 ? 'bg-[#e03131] text-white animate-pulse' : 'bg-black/50 text-white'
+          }`}
+        >
+          {Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+        </div>
         <canvas
           ref={canvasRef}
           width={W}
@@ -438,7 +471,7 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
         {status === 'lost' && (
           <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-4 z-10">
             <p className="font-extrabold text-4xl text-white drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]">
-              水果满出来啦!
+              {endReason === 'time' ? '时间到!' : '水果满出来啦!'}
             </p>
             <p className="font-extrabold text-xl text-[#ffd700]">得分 {score}</p>
             <div className="flex gap-3">
@@ -463,7 +496,7 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
       </div>
 
       <p className="mt-4 text-sm font-bold text-[#584235] text-center z-10">
-        左右移动身体 = 移动落点,跳一下 = 丢水果
+        左右移动身体 = 移动落点,蹲一下 = 丢水果(限时 1 分钟)
       </p>
 
       {/* Picture-in-Picture Motion Camera */}
