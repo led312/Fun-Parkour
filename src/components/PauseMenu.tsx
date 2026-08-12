@@ -38,18 +38,11 @@ export const PauseMenu: React.FC<PauseMenuProps> = ({
                 <li><strong>快速下蹲:</strong>滑铲躲避障碍。</li>
                 <li><strong>开合跳:</strong>开启护盾!</li>
               </ul>
-              <p className="font-bold text-[#0057c1] mt-2">⌨️ 键盘操作:</p>
-              <ul className="list-disc pl-5 space-y-1">
-                <li><strong>←/→ 或 A/D:</strong>切换跑道。</li>
-                <li><strong>↑ / W / 空格:</strong>跳跃。</li>
-                <li><strong>↓ / S:</strong>滑铲。</li>
-                <li><strong>Q:</strong>开启护盾。</li>
-              </ul>
               <p className="font-bold text-[#ff7a00] mt-2">⭐ 游戏目标:</p>
               <ul className="list-disc pl-5 space-y-1">
                 <li>收集金币,躲开锥桶和栏架,跑出最高分!</li>
                 <li>护盾每局 3 次,持续 10 秒,可抵挡一次撞击。</li>
-                <li>商店道具:喷气背包(跳跃中再跳一次,飞行 5 秒)、超级护盾(每局护盾次数 +1)。</li>
+                <li>商店道具:喷气背包(开局飞行 5 秒,天上全是金币)、超级护盾(开局自动获得 10 秒护盾)、分数加倍(开局 10 秒得分 x2)。</li>
               </ul>
             </div>
             <button

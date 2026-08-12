@@ -25,7 +25,7 @@ interface CalibrationScreenProps {
 // loading: model warming up; searching: no person detected yet;
 // calibrating: sampling the standing baseline; testing: walking through each
 // game gesture one by one; ready: everything detected, good to go;
-// unavailable: webcam/model failed, keyboard fallback
+// unavailable: webcam/model failed, keeps retrying in the background
 type CalibStatus =
   | 'loading'
   | 'searching'
@@ -280,29 +280,6 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepIndex, status]);
 
-  const handleStartCalibration = () => {
-    playButtonClick();
-
-    let count = 3;
-    setCountdown(count);
-
-    const interval = setInterval(() => {
-      count -= 1;
-      if (count > 0) {
-        setCountdown(count);
-        playBeepSound();
-      } else {
-        clearInterval(interval);
-        setCountdown(0);
-        setTimeout(() => {
-          // Pass the captured baseline into gameplay; null = game calibrates
-          // itself (keyboard / no-camera fallback)
-          onCalibrationComplete(baselineRef.current);
-        }, 500);
-      }
-    }, 900);
-  };
-
   // All gestures verified -> count down 3-2-1-GO! and start automatically,
   // no button press needed.
   useEffect(() => {
@@ -340,7 +317,7 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
     calibrating: '站直别动,让我们记住你的姿势!',
     testing: currentStep?.hint ?? '',
     ready: '所有动作都识别成功,准备开跑...',
-    unavailable: '动作识别加载失败,正在重试 - 也可以用键盘玩。',
+    unavailable: '动作识别加载失败,正在重试...',
   };
 
   return (
@@ -438,15 +415,6 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
             </div>
           </div>
 
-          {/* Keyboard fallback: only when pose AI failed to load */}
-          {status === 'unavailable' && countdown === null && (
-            <button
-              onClick={handleStartCalibration}
-              className="w-full py-4 rounded-2xl font-extrabold text-2xl border-b-8 transition-all shadow-xl bg-[#ff7a00] hover:brightness-110 text-[#5c2800] border-[#753400] active:scale-95"
-            >
-              用键盘开始
-            </button>
-          )}
         </div>
       </div>
 
