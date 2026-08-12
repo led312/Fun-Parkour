@@ -5,12 +5,16 @@ import { PoseBaseline } from '../utils/poseDetector';
 import { assetUrl } from '../utils/assets';
 
 interface GameplayScreenProps {
-  onGameOver: (finalScore: number, coinsCollected: number) => void;
+  onGameOver: (finalScore: number, coinsCollected: number, trialShieldsUsed: number) => void;
   onPause: () => void;
   poseBaseline?: PoseBaseline | null;
   hasJetpack?: boolean; // owned shop powerup: 5s opening flight through a coin sky
-  hasSuperShield?: boolean; // owned shop powerup: 10s shield at run start
+  hasSuperShield?: boolean; // owned shop powerup: +1 shield charge this run
   hasScoreDoubler?: boolean; // owned shop powerup: 10s of 2x score at run start
+  shieldTrials?: number; // lifetime free shield charges left
+  jetpackDurationMs?: number; // upgraded opening flight duration
+  shieldDurationMs?: number; // upgraded shield duration
+  boostDurationMs?: number; // upgraded score-doubler duration
 }
 
 // Runner sprite images (transparent PNGs in /public/assets). Running
@@ -38,6 +42,10 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   hasJetpack = false,
   hasSuperShield = false,
   hasScoreDoubler = false,
+  shieldTrials = 0,
+  jetpackDurationMs = 5000,
+  shieldDurationMs = 10000,
+  boostDurationMs = 10000,
 }) => {
   const [score, setScore] = useState(0);
   const [lane, setLane] = useState<number>(1); // 0, 1, 2
@@ -45,7 +53,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const [isSliding, setIsSliding] = useState(false);
   const [hasShield, setHasShield] = useState(false);
   const [webcamActive, setWebcamActive] = useState(false);
-  const [shieldCharges, setShieldCharges] = useState(3);
+  const [shieldCharges, setShieldCharges] = useState(shieldTrials + (hasSuperShield ? 1 : 0));
   const [shieldRemaining, setShieldRemaining] = useState(0);
   const [isFlying, setIsFlying] = useState(false);
   const [coinsCollected, setCoinsCollected] = useState(0);
@@ -62,12 +70,18 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const jumpingRef = useRef(false);
   const slidingRef = useRef(false);
   const hasShieldRef = useRef(false);
-  const shieldChargesRef = useRef(3);
+  const shieldChargesRef = useRef(shieldTrials + (hasSuperShield ? 1 : 0));
+  const shieldsUsedRef = useRef(0); // charges activated this run
   const shieldEndRef = useRef(0);
   const flyingRef = useRef(false);
   const coinsRef = useRef(0);
   const scoreMultRef = useRef(1);
   const coinRainUntilRef = useRef(0); // jetpack opening flight window
+  const laneRef = useRef(1); // live lane for the render loop (state mirror)
+  const flyStartRef = useRef(0); // flight takeoff/landing animation timestamps
+  const flyEndRef = useRef(0);
+  const onGameOverRef = useRef(onGameOver);
+  onGameOverRef.current = onGameOver;
   const runnerImgsRef = useRef<Partial<Record<keyof typeof RUNNER_SPRITES, HTMLImageElement>>>({});
 
   // Preload runner sprites once; missing files just keep the vector fallback
@@ -88,12 +102,14 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     if (hasJetpack) {
       flyingRef.current = true;
       setIsFlying(true);
-      coinRainUntilRef.current = Date.now() + 5000;
+      flyStartRef.current = Date.now();
+      coinRainUntilRef.current = Date.now() + jetpackDurationMs;
       timers.push(
         setTimeout(() => {
           flyingRef.current = false;
           setIsFlying(false);
-        }, 5000),
+          flyEndRef.current = Date.now(); // landing animation starts
+        }, jetpackDurationMs),
       );
     }
     if (hasScoreDoubler) {
@@ -103,16 +119,21 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         setTimeout(() => {
           scoreMultRef.current = 1;
           setScoreBoost(false);
-        }, 10000),
+        }, boostDurationMs),
       );
     }
     return () => timers.forEach(clearTimeout);
-  }, [hasJetpack, hasScoreDoubler]);
+  }, [hasJetpack, hasScoreDoubler, jetpackDurationMs, boostDurationMs]);
 
   // Keep a live copy of score so the game loop can report it on game over
   useEffect(() => {
     scoreRef.current = score;
   }, [score]);
+
+  // Mirror lane into a ref so the render loop never restarts on lane change
+  useEffect(() => {
+    laneRef.current = lane;
+  }, [lane]);
 
   // Match canvas resolution to its displayed size so nothing is cropped
   useEffect(() => {
@@ -183,21 +204,18 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
     }, 600);
   }, []);
 
-  // Shield: 3 free charges per run, each lasts 10s and blocks one hit
+  // Shield: charges come from the lifetime trial (3 free) plus any purchased
+  // super shield; each activation lasts 10s and blocks one hit
   const activateShield = useCallback(() => {
     if (hasShieldRef.current || shieldChargesRef.current <= 0) return;
     shieldChargesRef.current -= 1;
+    shieldsUsedRef.current += 1;
     setShieldCharges(shieldChargesRef.current);
     hasShieldRef.current = true;
     setHasShield(true);
-    shieldEndRef.current = Date.now() + 10000;
+    shieldEndRef.current = Date.now() + shieldDurationMs;
     playVictorySound();
-  }, []);
-
-  // Purchased super shield: auto-activate a 10s shield at run start
-  useEffect(() => {
-    if (hasSuperShield) activateShield();
-  }, [hasSuperShield, activateShield]);
+  }, [shieldDurationMs]);
 
   // Shield countdown / expiry
   useEffect(() => {
@@ -307,7 +325,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       }
 
       // Update positions
-      const speed = 0.815;
+      const speed = 0.865;
       obstaclesRef.current.forEach((obs) => {
         obs.z -= speed;
       });
@@ -323,7 +341,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       obstaclesRef.current = obstaclesRef.current.filter((obs) => {
         if (obs.z <= collideZ && !obs.collected && !gameOverRef.current) {
           // Check collision at player z range (5 ~ 0)
-          if (obs.lane === lane) {
+          if (obs.lane === laneRef.current) {
             if (obs.type === 'coin') {
               obs.collected = true;
               playCoinSound();
@@ -333,18 +351,23 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             } else if (obs.type === 'cone' || obs.type === 'hurdle') {
               if (flyingRef.current) {
                 // Jetpack flight carries the runner over everything
-              } else if (isJumping && obs.type === 'hurdle') {
+              } else if (jumpingRef.current && obs.type === 'hurdle') {
                 // Avoided hurdle by jumping!
                 setScore((s) => s + 30 * scoreMultRef.current);
-              } else if (hasShield) {
+              } else if (hasShieldRef.current) {
                 // Shield absorbs one hit, then breaks
                 obs.collected = true;
                 hasShieldRef.current = false;
                 setHasShield(false);
               } else {
-                // Hit an obstacle: run ends
+                // Hit an obstacle: run ends. The purchased charge is counted
+                // as used first; the rest drains the lifetime trial pool.
                 gameOverRef.current = true;
-                onGameOver(scoreRef.current, coinsRef.current);
+                const trialUsed = Math.max(
+                  0,
+                  shieldsUsedRef.current - (hasSuperShield ? 1 : 0),
+                );
+                onGameOverRef.current(scoreRef.current, coinsRef.current, trialUsed);
               }
             }
           }
@@ -358,6 +381,18 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         if (ctx) {
           const width = canvas.width;
           const height = canvas.height;
+
+          // Flight takeoff/landing animation progress (0 = on the ground,
+          // 1 = fully airborne). Ramps up over 700ms after takeoff and back
+          // down over 700ms after the jetpack cuts out.
+          const nowMs = Date.now();
+          let flyP = 0;
+          if (flyingRef.current && flyStartRef.current) {
+            flyP = Math.min(1, (nowMs - flyStartRef.current) / 700);
+          } else if (flyEndRef.current) {
+            flyP = Math.max(0, 1 - (nowMs - flyEndRef.current) / 700);
+            if (flyP <= 0) flyEndRef.current = 0;
+          }
 
           // Sky + small horizon hills: the green band stays within the top
           // 1/6 of the screen so the track gets everything below it
@@ -376,6 +411,19 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           ctx.arc(width * 0.25, horizon, horizon * 0.55, Math.PI, 0);
           ctx.arc(width * 0.75, horizon, horizon * 0.75, Math.PI, 0);
           ctx.fill();
+
+          // Clouds rushing past while airborne: sells the sense of altitude
+          if (flyP > 0.02) {
+            ctx.fillStyle = `rgba(255,255,255,${0.85 * flyP})`;
+            for (let i = 0; i < 3; i++) {
+              const cx = width - ((nowMs / 3 + i * 260) % (width + 240)) + 120;
+              const cy = horizon * 0.35 + i * horizon * 0.3;
+              ctx.beginPath();
+              ctx.ellipse(cx, cy, 46, 15, 0, 0, Math.PI * 2);
+              ctx.ellipse(cx + 36, cy + 6, 28, 11, 0, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
 
           // Stadium track: three parallel, equally wide lanes (no perspective
           // convergence, so kids can tell the lanes apart at a glance)
@@ -411,12 +459,14 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             if (obs.collected) return;
 
             const scale = (100 - obs.z) / 100; // 0 (far) to 1 (near)
-            const objY = vanishingY + (height - vanishingY) * scale;
+            // While airborne the track compresses toward the horizon and
+            // everything shrinks a bit, like the camera pulled up
+            const objY = vanishingY + (height - vanishingY) * scale * (1 - 0.22 * flyP);
 
             // Lane X position: lane centers stay fixed on parallel lanes
             const objX = (obs.lane + 0.5) * laneW;
 
-            const size = Math.max(22, 85 * scale);
+            const size = Math.max(22, 85 * scale) * (1 - 0.15 * flyP);
 
             ctx.save();
             ctx.translate(objX, objY);
@@ -456,31 +506,47 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
           // Draw Runner Character in Perspective
           const runnerScale = 0.9;
-          const playerX = (lane + 0.5) * laneW;
+          const playerX = (laneRef.current + 0.5) * laneW;
           let playerY = height - 160;
 
-          if (isJumping) {
+          if (jumpingRef.current) {
             playerY -= 65;
           }
-          if (isFlying) {
-            playerY -= 120;
-          }
+          // Flying lifts the runner smoothly; shrinking reads as "higher up"
+          playerY -= 150 * flyP;
+          const airScale = 1 - 0.3 * flyP;
 
-          // Runner Shadow
-          ctx.fillStyle = 'rgba(0,0,0,0.25)';
+          // Runner Shadow stays on the ground, fading and shrinking as the
+          // runner gains altitude
+          ctx.fillStyle = `rgba(0,0,0,${0.25 * (1 - 0.75 * flyP)})`;
           ctx.beginPath();
-          ctx.ellipse(playerX, playerY + 75, 40 * runnerScale, 12 * runnerScale, 0, 0, Math.PI * 2);
+          ctx.ellipse(
+            playerX,
+            height - 160 + 75,
+            40 * runnerScale * (1 - 0.4 * flyP),
+            12 * runnerScale * (1 - 0.4 * flyP),
+            0,
+            0,
+            Math.PI * 2,
+          );
           ctx.fill();
 
           // Runner sprite by state; falls back to the vector-drawn runner
           // until the PNG assets exist in /public/assets. Running alternates
           // between the two run frames every 150ms.
           const runFrame = Math.floor(Date.now() / 150) % 2 === 0 ? 'run-1' : 'run-2';
-          const spriteKey = isSliding ? 'slide' : isFlying ? 'fly' : isJumping ? 'jump' : runFrame;
+          const spriteKey = slidingRef.current
+            ? 'slide'
+            : flyP > 0.3
+              ? 'fly'
+              : jumpingRef.current
+                ? 'jump'
+                : runFrame;
           const sprite = runnerImgsRef.current[spriteKey];
 
           ctx.save();
           ctx.translate(playerX, playerY);
+          ctx.scale(airScale, airScale);
           if (sprite) {
             // Feet anchor matches the old vector runner (~32px below playerY)
             const h = 170;
@@ -539,8 +605,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             ctx.fillRect(2, 22 - legOffset, 16, 10);
           }
 
-          // Jetpack flame while flying
-          if (isFlying) {
+          // Jetpack flame while airborne (fades out with the landing ramp)
+          if (flyP > 0.3) {
             ctx.fillStyle = '#ff5500';
             ctx.beginPath();
             ctx.moveTo(-12, 34);
@@ -562,7 +628,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           ctx.restore();
 
           // Shield bubble around the runner while active
-          if (hasShield) {
+          if (hasShieldRef.current) {
             const pulse = 1 + Math.sin(Date.now() / 150) * 0.05;
             ctx.save();
             ctx.translate(playerX, playerY - 60);
@@ -588,7 +654,8 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       cancelAnimationFrame(frameRef.current);
       clearInterval(scoreInterval);
     };
-  }, [lane, isJumping, isSliding, hasShield, isFlying]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="relative h-[calc(100vh-70px)] w-full bg-[#58b3ff] overflow-hidden select-none">
@@ -690,7 +757,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           <div className="w-32 h-2 bg-slate-800/70 rounded-full overflow-hidden">
             <div
               className="h-full bg-[#7fd4ff] transition-all duration-200"
-              style={{ width: `${(shieldRemaining / 10) * 100}%` }}
+              style={{ width: `${(shieldRemaining / (shieldDurationMs / 1000)) * 100}%` }}
             />
           </div>
         )}

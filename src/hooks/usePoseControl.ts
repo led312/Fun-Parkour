@@ -24,7 +24,7 @@ export interface PoseControlHandlers {
 
 export type PoseStatus = 'loading' | 'active' | 'unavailable';
 
-const FRAME_MS = 80; // ~12 FPS inference throttle
+const FRAME_MS = 40; // inference cadence floor (effective rate = inference time + this)
 const RETRY_MS = 3000; // delay before re-trying after a pose-model load failure
 const BASELINE_MS = 1000; // stand still for the first second to calibrate
 const JUMP_COOLDOWN_MS = 700;
@@ -118,11 +118,11 @@ export function usePoseControl(
       if (
         !squatArmedRef.current &&
         shoulderY !== null &&
-        shoulderY < b.shoulderY + 0.15 * b.torso
+        shoulderY < b.shoulderY + 0.08 * b.torso
       ) {
         squatArmedRef.current = true;
       }
-      if (shoulderY !== null && shoulderY > b.shoulderY + 0.3 * b.torso) {
+      if (shoulderY !== null && shoulderY > b.shoulderY + 0.2 * b.torso) {
         squatFramesRef.current += 1;
         if (
           squatArmedRef.current &&
@@ -171,8 +171,8 @@ export function usePoseControl(
         jumpArmedRef.current = true;
       }
       const risingFast =
-        prevHipYRef.current !== null && prevHipYRef.current - m.hipY > 0.18 * b.torso;
-      const aboveBaseline = m.hipY < b.hipY - 0.22 * b.torso;
+        prevHipYRef.current !== null && prevHipYRef.current - m.hipY > 0.12 * b.torso;
+      const aboveBaseline = m.hipY < b.hipY - 0.15 * b.torso;
       if (
         jumpArmedRef.current &&
         (risingFast || aboveBaseline) &&
