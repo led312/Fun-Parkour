@@ -8,6 +8,8 @@ import { CalibrationScreen } from './components/CalibrationScreen';
 import { GameplayScreen } from './components/GameplayScreen';
 import { ResultsScreen } from './components/ResultsScreen';
 import { ShopScreen } from './components/ShopScreen';
+import { PacmanScreen } from './components/PacmanScreen';
+import { SuikaScreen } from './components/SuikaScreen';
 import { PauseMenu } from './components/PauseMenu';
 
 // Progress (high score, coins, purchases) and the login session survive page
@@ -23,6 +25,8 @@ const DEFAULT_USER: UserProfile = {
   highScore: 0,
   coins: 0,
   stars: 0,
+  shieldTrials: 3,
+  upgrades: {},
   selectedAvatar: 'shiba',
   ownedItems: ['shiba'],
 };
@@ -67,13 +71,18 @@ export default function App() {
     setScreen('LOBBY');
   };
 
-  const handleGameOver = (finalScore: number, coinsCollected: number) => {
+  const handleGameOver = (finalScore: number, coinsCollected: number, trialShieldsUsed: number) => {
     const newHigh = Math.max(user.highScore, finalScore);
     setUser((prev) => ({
       ...prev,
       score: finalScore,
       highScore: newHigh,
       coins: prev.coins + coinsCollected,
+      shieldTrials: Math.max(0, prev.shieldTrials - trialShieldsUsed),
+      // Shop powerups are consumable: one run per purchase
+      ownedItems: prev.ownedItems.filter(
+        (id) => id !== 'rocket_boost' && id !== 'shield_boost' && id !== 'score_doubler',
+      ),
     }));
     setLastRunScore(finalScore);
     setLastCoinsEarned(coinsCollected);
@@ -113,6 +122,7 @@ export default function App() {
             onStartCalibration={() => setScreen('CALIBRATION')}
             onOpenShop={() => setScreen('SHOP')}
             onOpenSettings={() => setIsPauseOpen(true)}
+            onOpenSuika={() => setScreen('SUIKA')}
           />
         )}
 
@@ -132,6 +142,10 @@ export default function App() {
             hasJetpack={user.ownedItems.includes('rocket_boost')}
             hasSuperShield={user.ownedItems.includes('shield_boost')}
             hasScoreDoubler={user.ownedItems.includes('score_doubler')}
+            shieldTrials={user.shieldTrials}
+            jetpackDurationMs={5000 + 5000 * (user.upgrades['rocket_boost'] ?? 0)}
+            shieldDurationMs={10000 + 5000 * (user.upgrades['shield_boost'] ?? 0)}
+            boostDurationMs={10000 + 5000 * (user.upgrades['score_doubler'] ?? 0)}
             onGameOver={handleGameOver}
             onPause={() => setIsPauseOpen(true)}
           />
@@ -151,6 +165,21 @@ export default function App() {
             user={user}
             onUpdateUser={(updated) => setUser((u) => ({ ...u, ...updated }))}
             onClose={() => setScreen('LOBBY')}
+            onOpenPacman={() => setScreen('PACMAN')}
+          />
+        )}
+
+        {screen === 'PACMAN' && (
+          <PacmanScreen
+            poseBaseline={poseBaseline}
+            onExit={() => setScreen('SHOP')}
+          />
+        )}
+
+        {screen === 'SUIKA' && (
+          <SuikaScreen
+            poseBaseline={poseBaseline}
+            onExit={() => setScreen('LOBBY')}
           />
         )}
       </main>

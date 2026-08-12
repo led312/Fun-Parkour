@@ -8,6 +8,7 @@ interface LobbyScreenProps {
   onStartCalibration: () => void;
   onOpenShop: () => void;
   onOpenSettings: () => void;
+  onOpenSuika: () => void;
 }
 
 export const LobbyScreen: React.FC<LobbyScreenProps> = ({
@@ -15,6 +16,7 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
   onStartCalibration,
   onOpenShop,
   onOpenSettings,
+  onOpenSuika,
 }) => {
   const [showToast, setShowToast] = useState(true);
 
@@ -102,6 +104,18 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
             <span className="font-extrabold text-lg tracking-wider">设置</span>
           </button>
         </div>
+
+        {/* Suika Mini Game Entry */}
+        <button
+          onClick={() => {
+            playButtonClick();
+            onOpenSuika();
+          }}
+          className="w-full max-w-md mt-3 bg-[#20b900] hover:brightness-110 active:scale-95 text-white rounded-2xl px-6 py-3.5 flex items-center justify-center gap-2 border-b-8 border-[#0d4d00] shadow-xl transition-all"
+        >
+          <span className="material-symbols-outlined text-2xl symbol-filled">favorite</span>
+          <span className="font-extrabold text-lg tracking-wider">合成大西瓜</span>
+        </button>
       </div>
     </div>
   );
