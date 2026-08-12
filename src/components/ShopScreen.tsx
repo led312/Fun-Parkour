@@ -34,7 +34,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       id: 'shield_boost',
       name: '超级护盾',
       type: 'powerup',
-      description: '每局护盾次数 +1。',
+      description: '开局自动获得 10 秒护盾。',
       cost: 300,
       icon: 'shield',
     },
@@ -42,9 +42,17 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
       id: 'rocket_boost',
       name: '火箭喷气背包',
       type: 'powerup',
-      description: '跳跃中再跳一次,飞行 5 秒越过一切,每局一次!',
+      description: '开局自动飞行 5 秒,天上全是金币!',
       cost: 1000,
       icon: 'rocket_launch',
+    },
+    {
+      id: 'score_doubler',
+      name: '分数加倍',
+      type: 'powerup',
+      description: '开局 10 秒内得分 x2。',
+      cost: 1500,
+      icon: 'bolt',
     },
   ];
 
@@ -89,12 +97,6 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
               monetization_on
             </span>
             <span className="font-extrabold text-lg text-[#161d1f]">{user.coins} 金币</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-[#ff7a00] text-2xl symbol-filled">
-              stars
-            </span>
-            <span className="font-extrabold text-lg text-[#161d1f]">{user.stars} 星星</span>
           </div>
         </div>
 
