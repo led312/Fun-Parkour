@@ -54,6 +54,13 @@ export const LobbyScreen: React.FC<LobbyScreenProps> = ({
 
       {/* Main Mascot & Hero Content */}
       <div className="relative z-10 w-full max-w-lg flex flex-col items-center my-auto px-4">
+        {/* Personal Best Badge (always visible on the main page) */}
+        <div className="mb-4 bg-white/85 backdrop-blur-sm px-6 py-2.5 rounded-full border-4 border-[#ffd700] shadow-xl flex items-center gap-2.5">
+          <span className="material-symbols-outlined text-3xl text-[#e0a800] symbol-filled">emoji_events</span>
+          <span className="font-extrabold text-sm uppercase tracking-wider text-[#584235]">我的最高分</span>
+          <span className="font-extrabold text-2xl text-[#106e00]">{user.highScore.toLocaleString()}</span>
+        </div>
+
         {/* Mascot Image */}
         <div className="floating-star mb-6 sm:mb-8">
           <img

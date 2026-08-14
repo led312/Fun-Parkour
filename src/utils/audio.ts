@@ -145,3 +145,29 @@ export function playBeepSound() {
     console.debug('Audio error:', e);
   }
 }
+
+// Crunchy descending buzz for crashing into an obstacle (or a shield break)
+export function playHitSound() {
+  try {
+    const ctx = getAudioContext();
+    const now = ctx.currentTime;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, now);
+    osc.frequency.exponentialRampToValueAtTime(55, now + 0.3);
+
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.3);
+  } catch (e) {
+    console.debug('Audio error:', e);
+  }
+}

@@ -1,7 +1,9 @@
 // Motion-controlled Suika (watermelon merge) mini game. Lean left/right to
-// move the drop point, jump to drop the fruit. Identical fruits merge into
-// the next bigger one; the run ends when the pile crosses the top line.
-// Keyboard arrows + space work as fallback, tap/click drops too.
+// move the drop point, squat to drop the fruit. Identical fruits merge into
+// the next bigger one. Challenge: merge up to the level-6 fruit within one
+// minute — succeed and you win; run out of time (or overflow the box) and
+// the challenge fails. Keyboard arrows + space work as fallback, tap/click
+// drops too.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { playButtonClick, playJumpSound, playVictorySound } from '../utils/audio';
@@ -10,13 +12,15 @@ import {
   detectPose,
   drawSkeleton,
   measureBaseline,
+  measureHeadY,
+  measureHipY,
   measureShoulderX,
+  measureShoulderY,
   PoseBaseline,
 } from '../utils/poseDetector';
 
 interface SuikaScreenProps {
   poseBaseline?: PoseBaseline | null;
-  onExit: () => void;
 }
 
 const W = 400;
@@ -27,20 +31,19 @@ const DROP_Y = 50;
 const GRAVITY = 0.35;
 const DROP_COOLDOWN_MS = 700;
 
+// 6 levels total: merging two level-5 fruits creates the level-6 goal fruit
+// and wins the challenge
 const FRUITS = [
-  { r: 14, color: '#ff6b6b', edge: '#c92a2a', score: 1 }, // 樱桃
-  { r: 20, color: '#ffa94d', edge: '#d9480f', score: 3 }, // 橘子
-  { r: 28, color: '#ffd43b', edge: '#f08c00', score: 6 }, // 柠檬
-  { r: 36, color: '#69db7c', edge: '#2f9e44', score: 10 }, // 猕猴桃
-  { r: 45, color: '#ff8787', edge: '#e03131', score: 15 }, // 苹果
-  { r: 55, color: '#4dabf7', edge: '#1971c2', score: 21 }, // 梨
-  { r: 66, color: '#9775fa', edge: '#6741d9', score: 28 }, // 葡萄
-  { r: 78, color: '#f783ac', edge: '#d6336c', score: 36 }, // 桃子
-  { r: 90, color: '#63e6be', edge: '#0ca678', score: 45 }, // 香瓜
-  { r: 105, color: '#8ce99a', edge: '#2f9e44', score: 55 }, // 大西瓜
-  { r: 120, color: '#37b24d', edge: '#2b8a3e', score: 66 }, // 西瓜王
+  { r: 14, color: '#ff6b6b', edge: '#c92a2a', score: 1 }, // 樱桃 (1级)
+  { r: 20, color: '#ffa94d', edge: '#d9480f', score: 3 }, // 橘子 (2级)
+  { r: 28, color: '#ffd43b', edge: '#f08c00', score: 6 }, // 柠檬 (3级)
+  { r: 36, color: '#69db7c', edge: '#2f9e44', score: 10 }, // 猕猴桃 (4级)
+  { r: 45, color: '#ff8787', edge: '#e03131', score: 15 }, // 苹果 (5级)
+  { r: 55, color: '#4dabf7', edge: '#1971c2', score: 21 }, // 梨 (6级,目标!)
 ];
-const DROPPABLE = 5; // only the smallest fruits fall from the dropper
+const GOAL_LEVEL = FRUITS.length - 1; // merging up to this level wins
+const DROPPABLE = 4; // only levels 1-4 fall from the dropper: levels 5-6 must
+// be earned by merging, so the goal always takes some work
 
 interface Body {
   id: number;
@@ -53,12 +56,11 @@ interface Body {
   merging?: boolean;
 }
 
-type GameStatus = 'playing' | 'lost';
+type GameStatus = 'playing' | 'won' | 'lost';
 
-export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, onExit }) => {
+export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null }) => {
   const [score, setScore] = useState(0);
   const [status, setStatus] = useState<GameStatus>('playing');
-  const [endReason, setEndReason] = useState<'time' | 'full'>('full');
   const [timeLeft, setTimeLeft] = useState(60);
   const [webcamActive, setWebcamActive] = useState(false);
   const [poseStatus, setPoseStatus] = useState<'loading' | 'active' | 'unavailable'>('loading');
@@ -87,7 +89,10 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
       x: Math.min(W - WALL - r, Math.max(WALL + r, dropXRef.current)),
       y: DROP_Y,
       vx: 0,
-      vy: 15, // instant drop: fruits start at full falling speed
+      // Starts at rest and accelerates under gravity: reads as a natural
+      // fall instead of an instant plunge, and keeps same-level fruits in
+      // contact long enough to merge mid-air
+      vy: 0,
       level,
       bornAt: now,
     });
@@ -158,20 +163,32 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
                 const dxN = (sx - b.centerX) / b.shoulderW;
                 dropXRef.current = Math.min(W - WALL, Math.max(WALL, W / 2 + dxN * W * 1.4));
               }
-              // Squat to drop: shoulders clearly below baseline for 2 ticks,
-              // re-armed after standing back up
-              const m = measureBaseline(kps);
-              if (m) {
-                if (m.shoulderY > b.shoulderY + 0.2 * b.torso) {
-                  squatFrames += 1;
-                  if (squatFrames >= 2 && squatArmed) {
-                    squatArmed = false;
-                    dropFruitRef.current();
-                  }
-                } else {
-                  squatFrames = 0;
-                  if (m.shoulderY < b.shoulderY + 0.08 * b.torso) squatArmed = true;
+              // Squat to drop: majority vote across the available body cues
+              // (head / shoulders / hips) clearly below baseline for 2 ticks,
+              // so a single jittery keypoint can't drop a fruit by itself;
+              // re-armed after an upper-body cue shows the player standing
+              const headY = measureHeadY(kps);
+              const sy = measureShoulderY(kps);
+              const hy = measureHipY(kps);
+              const squatVotes =
+                (headY !== null && headY > b.headY + 0.2 * b.torso ? 1 : 0) +
+                (sy !== null && sy > b.shoulderY + 0.18 * b.torso ? 1 : 0) +
+                (hy !== null && hy > b.hipY + 0.12 * b.torso ? 1 : 0);
+              const cuesAvailable =
+                (headY !== null ? 1 : 0) + (sy !== null ? 1 : 0) + (hy !== null ? 1 : 0);
+              const squatting = cuesAvailable >= 2 && squatVotes >= 2;
+              if (squatting) {
+                squatFrames += 1;
+                if (squatFrames >= 2 && squatArmed) {
+                  squatArmed = false;
+                  dropFruitRef.current();
                 }
+              } else {
+                squatFrames = 0;
+                const recovered =
+                  (headY !== null && headY < b.headY + 0.08 * b.torso) ||
+                  (sy !== null && sy < b.shoulderY + 0.08 * b.torso);
+                if (recovered) squatArmed = true;
               }
             }
           }
@@ -231,11 +248,11 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
       const bodies = bodiesRef.current;
       const now = Date.now();
 
-      // Countdown drives the end of the round
+      // Countdown drives the end of the round: one minute, then it's over
       const left = Math.max(0, Math.ceil((endAt - now) / 1000));
       setTimeLeft((prev) => (prev === left ? prev : left));
       if (left <= 0 && statusRef.current === 'playing') {
-        setEndReason('time');
+        statusRef.current = 'lost';
         setStatus('lost');
       }
 
@@ -275,13 +292,24 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
               const dy = b.y - a.y;
               const dist = Math.hypot(dx, dy) || 0.01;
               const minDist = ra + rb;
-              if (dist >= minDist) continue;
-              if (a.level === b.level && a.level < FRUITS.length - 1 && !a.merging && !b.merging) {
+              // Merge on contact, not just on overlap: positional correction
+              // leaves resting pairs exactly touching (dist == minDist),
+              // which the old overlap-only check treated as "no collision",
+              // so same-level fruits brushing past each other in mid-air
+              // never merged. A small tolerance counts touching as contact.
+              if (
+                a.level === b.level &&
+                a.level < FRUITS.length - 1 &&
+                !a.merging &&
+                !b.merging &&
+                dist < minDist * 1.08
+              ) {
                 a.merging = true;
                 b.merging = true;
                 merges.push([a, b]);
                 continue;
               }
+              if (dist >= minDist) continue;
               // Positional correction + soft velocity exchange
               const nx = dx / dist;
               const ny = dy / dist;
@@ -303,7 +331,8 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
             }
           }
 
-          // Apply merges: the pair becomes one fruit of the next level
+          // Apply merges: the pair becomes one fruit of the next level;
+          // reaching the level-6 fruit wins the challenge on the spot
           merges.forEach(([a, b]) => {
             const level = a.level + 1;
             setScore((s) => s + FRUITS[level].score);
@@ -317,19 +346,24 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
               level,
               bornAt: now,
             });
+            if (level === GOAL_LEVEL && statusRef.current === 'playing') {
+              statusRef.current = 'won';
+              setStatus('won');
+            }
           });
           if (merges.length > 0) {
             bodiesRef.current = bodiesRef.current.filter((b) => !b.merging);
           }
         }
 
-        // Game over: a settled fruit stays above the deadline line
+        // Overflow also ends the round: a settled fruit stays above the
+        // deadline line
         const danger = bodiesRef.current.some(
           (b) => now - b.bornAt > 1000 && b.y - FRUITS[b.level].r < LINE_Y && Math.abs(b.vy) < 1.5,
         );
         overLineFrames = danger ? overLineFrames + 1 : 0;
         if (overLineFrames > 90) {
-          setEndReason('full');
+          statusRef.current = 'lost';
           setStatus('lost');
         }
       }
@@ -420,7 +454,6 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
     playButtonClick();
     setScore(0);
     setTimeLeft(60);
-    setEndReason('full');
     setStatus('playing');
     currentRef.current = Math.floor(Math.random() * DROPPABLE);
     nextRef.current = Math.floor(Math.random() * DROPPABLE);
@@ -429,21 +462,15 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
 
   return (
     <div className="relative min-h-[calc(100vh-70px)] w-full flex flex-col items-center px-4 py-6 select-none">
-      {/* Score HUD */}
+      {/* Score + Goal HUD */}
       <div className="w-full max-w-md flex items-center justify-between mb-4 z-10">
         <div className="bg-[#ff7a00] text-white px-4 py-1.5 rounded-full border-4 border-white shadow-lg flex items-center gap-1.5">
           <span className="font-bold text-xs uppercase">得分</span>
           <span className="font-extrabold text-xl">{score}</span>
         </div>
-        <button
-          onClick={() => {
-            playButtonClick();
-            onExit();
-          }}
-          className="bg-[#0057c1] text-white px-4 py-1.5 rounded-full border-4 border-white shadow-lg font-extrabold text-sm active:scale-95"
-        >
-          返回大厅
-        </button>
+        <div className="bg-[#1971c2] text-white px-4 py-1.5 rounded-full border-4 border-white shadow-lg font-extrabold text-sm">
+          目标: 合成 6 级大球
+        </div>
       </div>
 
       {/* Playfield */}
@@ -468,35 +495,24 @@ export const SuikaScreen: React.FC<SuikaScreenProps> = ({ poseBaseline = null, o
           }}
         />
 
-        {status === 'lost' && (
+        {status !== 'playing' && (
           <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-4 z-10">
             <p className="font-extrabold text-4xl text-white drop-shadow-[0_4px_0_rgba(0,0,0,0.5)]">
-              {endReason === 'time' ? '时间到!' : '水果满出来啦!'}
+              {status === 'won' ? '挑战成功!' : '挑战失败,再试一次吧!'}
             </p>
             <p className="font-extrabold text-xl text-[#ffd700]">得分 {score}</p>
-            <div className="flex gap-3">
-              <button
-                onClick={restart}
-                className="bg-[#ff7a00] text-[#5c2800] px-6 py-3 rounded-2xl border-b-4 border-[#753400] font-extrabold active:scale-95"
-              >
-                再来一次
-              </button>
-              <button
-                onClick={() => {
-                  playButtonClick();
-                  onExit();
-                }}
-                className="bg-[#0057c1] text-white px-6 py-3 rounded-2xl border-b-4 border-[#001a43] font-extrabold active:scale-95"
-              >
-                返回大厅
-              </button>
-            </div>
+            <button
+              onClick={restart}
+              className="bg-[#ff7a00] text-[#5c2800] px-6 py-3 rounded-2xl border-b-4 border-[#753400] font-extrabold active:scale-95"
+            >
+              再来一次
+            </button>
           </div>
         )}
       </div>
 
       <p className="mt-4 text-sm font-bold text-[#584235] text-center z-10">
-        左右移动身体 = 移动落点,蹲一下 = 丢水果(限时 1 分钟)
+        左右移动身体 = 移动落点,蹲一下 = 丢水果(限时 1 分钟合成 6 级大球!)
       </p>
 
       {/* Picture-in-Picture Motion Camera */}

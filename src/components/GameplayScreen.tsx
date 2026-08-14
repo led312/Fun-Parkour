@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { playCoinSound, playJumpSound, playVictorySound } from '../utils/audio';
+import { playCoinSound, playHitSound, playJumpSound, playVictorySound } from '../utils/audio';
 import { usePoseControl } from '../hooks/usePoseControl';
 import { PoseBaseline } from '../utils/poseDetector';
 import { assetUrl } from '../utils/assets';
@@ -15,6 +15,7 @@ interface GameplayScreenProps {
   jetpackDurationMs?: number; // upgraded opening flight duration
   shieldDurationMs?: number; // upgraded shield duration
   boostDurationMs?: number; // upgraded score-doubler duration
+  difficulty?: number; // spawn-rate/speed multiplier from the difficulty screen (0.6 / 1 / 1.6 / 3)
   onConsumeJetpack?: () => void; // called when the one-time jetpack fires
 }
 
@@ -47,6 +48,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   jetpackDurationMs = 5000,
   shieldDurationMs = 10000,
   boostDurationMs = 10000,
+  difficulty = 1,
   onConsumeJetpack,
 }) => {
   const [score, setScore] = useState(0);
@@ -80,6 +82,12 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const scoreMultRef = useRef(1);
   const coinRainUntilRef = useRef(0); // jetpack opening flight window
   const laneRef = useRef(1); // live lane for the render loop (state mirror)
+  const playerXRef = useRef<number | null>(null); // eased on-screen x: lane changes glide like a side-step
+  const jumpStartRef = useRef(0); // timestamps driving the eased jump/slide arcs
+  const slideStartRef = useRef(0);
+  const lastFrameTimeRef = useRef(0); // RAF timestamp of the previous frame (delta-time movement)
+  const hitAtRef = useRef(0); // crash timestamp: drives the red flash + camera shake
+  const shieldBreakAtRef = useRef(0); // shield-absorb timestamp: blue flash
   const flyStartRef = useRef(0); // flight takeoff/landing animation timestamps
   const flyEndRef = useRef(0);
   const onGameOverRef = useRef(onGameOver);
@@ -192,6 +200,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const triggerJump = useCallback(() => {
     if (flyingRef.current || jumpingRef.current) return;
     jumpingRef.current = true;
+    jumpStartRef.current = Date.now();
     setIsJumping(true);
     playJumpSound();
     setTimeout(() => {
@@ -203,6 +212,7 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   const triggerSlide = useCallback(() => {
     if (slidingRef.current) return;
     slidingRef.current = true;
+    slideStartRef.current = Date.now();
     setIsSliding(true);
     setTimeout(() => {
       slidingRef.current = false;
@@ -275,6 +285,14 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
   useEffect(() => {
     let lastSpawn = Date.now();
     let lastCoinRain = 0;
+    const gameStart = Date.now();
+    // Per-lane timestamp of the last obstacle spawn: a lane that got an
+    // obstacle recently is ineligible for the next one, so there's always
+    // an escape route and never two back-to-back threats in one lane.
+    const lastObstacleAt = [0, 0, 0];
+    const START_GRACE_MS = 5000; // opening window: coins only, no obstacles
+    const SPAWN_MS = 1300; // base spawn cadence
+    const RAMP_MS = 75000; // difficulty ramps up over the first 75s of a run
     // Queued spawns: coin strings trickle in one coin at a time (same lane)
     const spawnQueue: { type: Obstacle['type']; lane: number; at: number }[] = [];
     // Score ticks every 200ms: halves React re-renders versus a 100ms tick
@@ -282,8 +300,22 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       setScore((s) => s + 40 * scoreMultRef.current);
     }, 200);
 
-    const runLoop = () => {
+    const runLoop = (frameTime: number) => {
       const now = Date.now();
+      // Delta-time step: frame pacing varies with refresh rate and load, so
+      // all motion scales with elapsed time instead of advancing a fixed
+      // step per frame (the old fixed step stuttered on slow frames and
+      // raced on high-refresh screens)
+      const dt = lastFrameTimeRef.current
+        ? Math.min(50, frameTime - lastFrameTimeRef.current)
+        : 16.7;
+      lastFrameTimeRef.current = frameTime;
+      const dtScale = dt / 16.7;
+      // Difficulty ramps with run time: the opening stretch is wide-open
+      // track with almost all coins; obstacles arrive ever denser (and the
+      // track ever faster, see `speed` below) the longer the run lasts.
+      // The `difficulty` prop scales the whole curve.
+      const rampT = Math.min(1, (now - gameStart) / RAMP_MS);
 
       // Drain queued coin-string spawns
       while (spawnQueue.length && spawnQueue[0].at <= now) {
@@ -297,22 +329,41 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
       }
 
       // Spawn items
-      if (now - lastSpawn > 900) {
+      if (now - lastSpawn > SPAWN_MS) {
         lastSpawn = now;
+        const inGrace = now - gameStart < START_GRACE_MS;
         const roll = Math.random();
         const randomLane = Math.floor(Math.random() * 3);
-        if (roll < 0.55) {
-          // Obstacle (cone or hurdle)
-          obstaclesRef.current.push({
-            id: nextIdRef.current++,
-            lane: randomLane,
-            z: 100,
-            type: Math.random() < 0.5 ? 'cone' : 'hurdle',
-          });
+        const obstacleChance = Math.min(0.85, (0.18 + 0.35 * rampT) * difficulty);
+        // A "row" = obstacles still near their spawn depth. Never let more
+        // than two lanes be blocked in one row, so there's always a visible
+        // escape route and obstacles never link up into a wall.
+        const rowBlocked = obstaclesRef.current.filter(
+          (o) => o.type !== 'coin' && o.z > 75,
+        ).length;
+        const laneGapMs = 2200 / difficulty; // min gap between obstacles in one lane
+        if (!inGrace && roll < obstacleChance && rowBlocked < 2) {
+          // Obstacle (cone or hurdle), but only in a lane that hasn't seen
+          // one recently — otherwise drop a coin string this tick instead.
+          const eligible = [0, 1, 2].filter((l) => now - lastObstacleAt[l] > laneGapMs);
+          if (eligible.length > 0) {
+            const obstacleLane = eligible[Math.floor(Math.random() * eligible.length)];
+            lastObstacleAt[obstacleLane] = now;
+            obstaclesRef.current.push({
+              id: nextIdRef.current++,
+              lane: obstacleLane,
+              z: 100,
+              type: Math.random() < 0.5 ? 'cone' : 'hurdle',
+            });
+          } else {
+            for (let i = 0; i < 8; i++) {
+              spawnQueue.push({ type: 'coin', lane: randomLane, at: now + i * 140 });
+            }
+          }
         } else {
-          // Coin string: 6 coins trickling down the same lane
-          for (let i = 0; i < 6; i++) {
-            spawnQueue.push({ type: 'coin', lane: randomLane, at: now + i * 150 });
+          // Coin string: 8 coins trickling down the same lane
+          for (let i = 0; i < 8; i++) {
+            spawnQueue.push({ type: 'coin', lane: randomLane, at: now + i * 140 });
           }
         }
       }
@@ -331,11 +382,15 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
         }
       }
 
-      // Update positions
-      const speed = 0.865;
-      obstaclesRef.current.forEach((obs) => {
-        obs.z -= speed;
-      });
+      // Update positions: per-frame speed scaled by elapsed time, the
+      // time-based ramp, and the chosen difficulty. Frozen during the
+      // post-crash beat so the player sees what they hit.
+      const speed = 0.865 * (0.85 + 0.3 * rampT) * (0.8 + 0.2 * difficulty);
+      if (!gameOverRef.current) {
+        obstaclesRef.current.forEach((obs) => {
+          obs.z -= speed * dtScale;
+        });
+      }
 
       // Collide when an object reaches the runner's row: the runner is drawn
       // at height-160, which maps to z = 100*160/(height-vanishingY). Using a
@@ -362,19 +417,29 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
                 // Avoided hurdle by jumping!
                 setScore((s) => s + 30 * scoreMultRef.current);
               } else if (hasShieldRef.current) {
-                // Shield absorbs one hit, then breaks
+                // Shield absorbs one hit, then breaks — flash blue + buzz so
+                // the player notices the save
                 obs.collected = true;
                 hasShieldRef.current = false;
                 setHasShield(false);
+                shieldBreakAtRef.current = Date.now();
+                playHitSound();
               } else {
-                // Hit an obstacle: run ends. The purchased charge is counted
-                // as used first; the rest drains the lifetime trial pool.
+                // Hit an obstacle: flash red, shake the camera, and hold for
+                // a beat so the player sees what happened before the results
+                // screen appears. The purchased charge is counted as used
+                // first; the rest drains the lifetime trial pool.
                 gameOverRef.current = true;
+                hitAtRef.current = Date.now();
+                playHitSound();
                 const trialUsed = Math.max(
                   0,
                   shieldsUsedRef.current - (hasSuperShield ? 1 : 0),
                 );
-                onGameOverRef.current(scoreRef.current, coinsRef.current, trialUsed);
+                setTimeout(
+                  () => onGameOverRef.current(scoreRef.current, coinsRef.current, trialUsed),
+                  900,
+                );
               }
             }
           }
@@ -399,6 +464,14 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
           } else if (flyEndRef.current) {
             flyP = Math.max(0, 1 - (nowMs - flyEndRef.current) / 700);
             if (flyP <= 0) flyEndRef.current = 0;
+          }
+
+          // Crash feedback: shake the camera for ~0.5s after a hit
+          const hitAge = nowMs - hitAtRef.current;
+          ctx.save();
+          if (hitAtRef.current && hitAge < 500) {
+            const mag = 10 * (1 - hitAge / 500);
+            ctx.translate((Math.random() - 0.5) * 2 * mag, (Math.random() - 0.5) * 2 * mag);
           }
 
           // Sky + small horizon hills: the green band stays within the top
@@ -513,11 +586,21 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
 
           // Draw Runner Character in Perspective
           const runnerScale = 0.9;
-          const playerX = (laneRef.current + 0.5) * laneW;
+          // Lane changes ease toward the target lane instead of teleporting,
+          // so a sidestep reads like the runner actually stepping over
+          const targetX = (laneRef.current + 0.5) * laneW;
+          if (playerXRef.current === null) playerXRef.current = targetX;
+          playerXRef.current += (targetX - playerXRef.current) * Math.min(1, dt / 45);
+          const playerX = playerXRef.current;
           let playerY = height - 160;
 
-          if (jumpingRef.current) {
-            playerY -= 65;
+          // Jump height follows a sine arc over the 650ms airtime (quick
+          // rise, soft touchdown) instead of snapping on/off
+          const jumpT = jumpingRef.current
+            ? Math.min(1, (nowMs - jumpStartRef.current) / 650)
+            : 0;
+          if (jumpT > 0) {
+            playerY -= Math.sin(Math.PI * jumpT) * 70;
           }
           // Flying lifts the runner smoothly; shrinking reads as "higher up"
           playerY -= 150 * flyP;
@@ -563,10 +646,14 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             ctx.drawImage(sprite, -w / 2, -h + 32 - bob, w, h);
           } else {
             // Vector Runner Body (Orange Jersey with number 127, Blue shorts,
-            // brown hair ponytail)
-            if (isSliding) {
-              // Squash & stretch crouch pose while sliding
-              ctx.scale(1.15, 0.6);
+            // brown hair ponytail). Squash & stretch crouch while sliding,
+            // eased in and out with the same sine arc as the jump
+            const slideT = slidingRef.current
+              ? Math.min(1, (nowMs - slideStartRef.current) / 600)
+              : 0;
+            const squash = Math.sin(Math.PI * slideT);
+            if (squash > 0.01) {
+              ctx.scale(1 + 0.15 * squash, 1 - 0.4 * squash);
             }
 
             // Head / Hair
@@ -649,6 +736,18 @@ export const GameplayScreen: React.FC<GameplayScreenProps> = ({
             ctx.stroke();
             ctx.restore();
           }
+
+          // Full-screen flashes: red pulse on a crash, blue on a shield save
+          if (hitAtRef.current && hitAge < 600) {
+            ctx.fillStyle = `rgba(255, 0, 0, ${0.35 * (1 - hitAge / 600)})`;
+            ctx.fillRect(0, 0, width, height);
+          }
+          const shieldAge = nowMs - shieldBreakAtRef.current;
+          if (!hitAtRef.current && shieldBreakAtRef.current && shieldAge < 400) {
+            ctx.fillStyle = `rgba(127, 212, 255, ${0.3 * (1 - shieldAge / 400)})`;
+            ctx.fillRect(0, 0, width, height);
+          }
+          ctx.restore();
         }
       }
 

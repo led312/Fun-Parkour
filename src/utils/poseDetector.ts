@@ -3,6 +3,12 @@
 // VITE_ASSET_BASE when assets are served from COS) and returns 17 COCO
 // keypoints in *mirrored* video coordinates (matching the on-screen PiP feed,
 // so "user moves left" == decreasing x).
+//
+// Inference runs in a dedicated Web Worker (workers/poseWorker.ts): the model
+// input is fixed at 640x640 and each run takes tens of milliseconds, which
+// froze the game's render loop when it ran on the main thread. The
+// main-thread path below is kept as a fallback in case the worker itself
+// fails to start or its model load fails.
 
 import * as ort from 'onnxruntime-web/wasm';
 // Wasm-only build on purpose: ORT's WebGPU path hangs session creation on
@@ -53,6 +59,7 @@ const KP_CONF = 0.5;
 /** Standing-pose reference captured during calibration; all gesture
  *  thresholds are normalized against these measurements. */
 export interface PoseBaseline {
+  headY: number; // face-keypoint average, the most jitter-resistant drop signal
   shoulderY: number;
   hipY: number;
   torso: number; // shoulder->hip distance, the normalization scale
@@ -74,10 +81,14 @@ export function measureBaseline(kps: Keypoint[]): PoseBaseline | null {
   if (!kpOk(ls) || !kpOk(rs) || !kpOk(lh) || !kpOk(rh)) return null;
   const shoulder = kpMid(ls, rs);
   const hip = kpMid(lh, rh);
+  const torso = Math.max(1, hip.y - shoulder.y);
   return {
+    // Head sits roughly half a torso above the shoulders; the anatomical
+    // estimate only kicks in when every face keypoint is blurry
+    headY: measureHeadY(kps) ?? shoulder.y - 0.45 * torso,
     shoulderY: shoulder.y,
     hipY: hip.y,
-    torso: Math.max(1, hip.y - shoulder.y),
+    torso,
     centerX: hip.x,
     shoulderW: Math.max(1, Math.abs(rs.x - ls.x)),
   };
@@ -88,12 +99,38 @@ export function averageBaseline(samples: PoseBaseline[]): PoseBaseline {
   const avg = (pick: (b: PoseBaseline) => number) =>
     samples.reduce((s, b) => s + pick(b), 0) / samples.length;
   return {
+    headY: avg((b) => b.headY),
     shoulderY: avg((b) => b.shoulderY),
     hipY: avg((b) => b.hipY),
     torso: avg((b) => b.torso),
     centerX: avg((b) => b.centerX),
     shoulderW: avg((b) => b.shoulderW),
   };
+}
+
+/** Face-keypoint average y (nose/eyes/ears), or null when none are
+ *  confidently visible. The face is the most stable part of the skeleton —
+ *  it doesn't blur with arm/leg motion — so this is the primary squat
+ *  signal: squatting drops the head clearly below the standing baseline. */
+export function measureHeadY(kps: Keypoint[]): number | null {
+  let sum = 0;
+  let n = 0;
+  for (const i of [KP.NOSE, KP.LEFT_EYE, KP.RIGHT_EYE, KP.LEFT_EAR, KP.RIGHT_EAR]) {
+    const kp = kps[i];
+    if (kpOk(kp)) {
+      sum += kp.y;
+      n++;
+    }
+  }
+  return n > 0 ? sum / n : null;
+}
+
+/** Hip midpoint y, or null when hips aren't confidently visible. */
+export function measureHipY(kps: Keypoint[]): number | null {
+  const lh = kps[KP.LEFT_HIP];
+  const rh = kps[KP.RIGHT_HIP];
+  if (!kpOk(lh) || !kpOk(rh)) return null;
+  return (lh.y + rh.y) / 2;
 }
 
 /** Shoulder midpoint y, or null when shoulders aren't confidently visible.
@@ -267,14 +304,97 @@ function preprocess(video: HTMLVideoElement): { tensor: ort.Tensor; lb: Letterbo
   };
 }
 
+// --- Worker offload -------------------------------------------------------
+// One ImageBitmap per frame is transferred (zero-copy) to the worker, which
+// runs preprocessing + inference off the main thread. Any worker-level
+// failure (construction, script error, or a rejected model load) permanently
+// switches detectPose() to the main-thread fallback below.
+
+interface WorkerResponse {
+  id: number;
+  keypoints: Keypoint[] | null;
+  error?: string;
+}
+
+let worker: Worker | null = null;
+let workerFailed = false;
+let nextReqId = 1;
+const pending = new Map<
+  number,
+  { resolve: (k: Keypoint[] | null) => void; reject: (e: Error) => void }
+>();
+
+function failWorker(reason: unknown) {
+  console.warn('Pose worker unavailable, using main-thread inference:', reason);
+  workerFailed = true;
+  worker?.terminate();
+  worker = null;
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  pending.forEach((p) => p.reject(err));
+  pending.clear();
+}
+
+function getWorker(): Worker | null {
+  if (workerFailed) return null;
+  if (!worker) {
+    try {
+      worker = new Worker(new URL('../workers/poseWorker.ts', import.meta.url), {
+        type: 'module',
+      });
+      worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+        const { id, keypoints, error } = e.data;
+        const p = pending.get(id);
+        if (!p) return;
+        pending.delete(id);
+        if (error !== undefined) {
+          // The worker itself is alive but its model load failed; the
+          // main-thread fallback has its own CDN retry, so give it a shot.
+          p.reject(new Error(error));
+          failWorker(error);
+        } else {
+          p.resolve(keypoints);
+        }
+      };
+      worker.onerror = (e) => failWorker(e.message);
+    } catch (e) {
+      failWorker(e);
+      return null;
+    }
+  }
+  return worker;
+}
+
+async function detectPoseInWorker(video: HTMLVideoElement): Promise<Keypoint[] | null> {
+  const w = getWorker();
+  if (!w) throw new Error('pose worker unavailable');
+  const bitmap = await createImageBitmap(video);
+  const id = nextReqId++;
+  return new Promise<Keypoint[] | null>((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    w.postMessage(
+      { id, bitmap, videoWidth: video.videoWidth, videoHeight: video.videoHeight },
+      [bitmap],
+    );
+  });
+}
+
 /**
  * Run pose detection on the current video frame.
  * Returns the 17 keypoints of the most confident person (mirrored x),
  * or null when nobody is detected.
  */
 export async function detectPose(video: HTMLVideoElement): Promise<Keypoint[] | null> {
-  const session = await loadPoseModel();
   if (!video.videoWidth || !video.videoHeight) return null;
+
+  if (!workerFailed && typeof createImageBitmap === 'function') {
+    try {
+      return await detectPoseInWorker(video);
+    } catch {
+      workerFailed = true; // fall through to the main-thread path
+    }
+  }
+
+  const session = await loadPoseModel();
 
   const { tensor, lb } = preprocess(video);
   const results = await session.run({ [session.inputNames[0]]: tensor });

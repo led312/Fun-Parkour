@@ -1,4 +1,4 @@
-export type ScreenState = 'LOGIN' | 'LOBBY' | 'CALIBRATION' | 'GAMEPLAY' | 'RESULTS' | 'SHOP' | 'PACMAN' | 'SUIKA';
+export type ScreenState = 'LOGIN' | 'LOBBY' | 'DIFFICULTY' | 'CALIBRATION' | 'GAMEPLAY' | 'RESULTS' | 'SHOP' | 'PACMAN' | 'SUIKA';
 
 export interface UserProfile {
   name: string;

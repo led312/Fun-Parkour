@@ -13,7 +13,6 @@ import {
   KP,
   measureBaseline,
   measureShoulderX,
-  measureShoulderY,
   PoseBaseline,
 } from '../utils/poseDetector';
 import { assetUrl } from '../utils/assets';
@@ -35,7 +34,7 @@ type CalibStatus =
   | 'ready'
   | 'unavailable';
 
-type GestureId = 'jump' | 'squat' | 'left' | 'right' | 'jack';
+type GestureId = 'jump' | 'left' | 'right' | 'jack';
 
 interface GestureStep {
   id: GestureId;
@@ -77,7 +76,6 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
   const lastSampleRef = useRef<PoseBaseline | null>(null);
   const baselineRef = useRef<PoseBaseline | null>(null);
   const prevHipYRef = useRef<number | null>(null);
-  const squatFramesRef = useRef(0);
   const jackFramesRef = useRef(0);
 
   const isAligned = status === 'ready';
@@ -149,16 +147,6 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
         const aboveBaseline = m.hipY < b.hipY - 0.22 * b.torso;
         return risingFast || aboveBaseline;
       }
-      case 'squat': {
-        // Shoulders stay visible mid-squat while hips often lose confidence
-        const shoulderY = measureShoulderY(kps);
-        if (shoulderY !== null && shoulderY > b.shoulderY + 0.3 * b.torso) {
-          squatFramesRef.current += 1;
-        } else {
-          squatFramesRef.current = 0;
-        }
-        return squatFramesRef.current >= 2;
-      }
       case 'left': {
         const sx = measureShoulderX(kps);
         return sx !== null && sx < b.centerX - 0.45 * b.shoulderW;
@@ -176,9 +164,10 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
         }
         // Arms raised clearly above the baseline shoulder line and spread
         // wide; needs 2 consecutive frames so a single blurry frame can't
-        // pass or fail the check on its own.
-        const armsUp = lw.y < b.shoulderY - 0.2 * b.torso && rw.y < b.shoulderY - 0.2 * b.torso;
-        const armsWide = Math.abs(rw.x - lw.x) > 1.3 * b.shoulderW;
+        // pass or fail the check on its own. Thresholds match the in-game
+        // gesture state machine.
+        const armsUp = lw.y < b.shoulderY - 0.15 * b.torso && rw.y < b.shoulderY - 0.15 * b.torso;
+        const armsWide = Math.abs(rw.x - lw.x) > 1.2 * b.shoulderW;
         jackFramesRef.current = armsUp && armsWide ? jackFramesRef.current + 1 : 0;
         return jackFramesRef.current >= 2;
       }
@@ -245,7 +234,6 @@ export const CalibrationScreen: React.FC<CalibrationScreenProps> = ({
             const step = GESTURE_STEPS[stepIndex];
             if (step && kps && detectGesture(step.id, kps, m, baselineRef.current)) {
               playCoinSound();
-              squatFramesRef.current = 0;
               jackFramesRef.current = 0;
               const next = stepIndex + 1;
               setProgress(20 + next * 20);

@@ -4,6 +4,7 @@ import { PoseBaseline } from './utils/poseDetector';
 import { Header } from './components/Header';
 import { LoginScreen } from './components/LoginScreen';
 import { LobbyScreen } from './components/LobbyScreen';
+import { DifficultyScreen } from './components/DifficultyScreen';
 import { CalibrationScreen } from './components/CalibrationScreen';
 import { GameplayScreen } from './components/GameplayScreen';
 import { ResultsScreen } from './components/ResultsScreen';
@@ -52,6 +53,8 @@ export default function App() {
 
   const [lastRunScore, setLastRunScore] = useState(0);
   const [lastCoinsEarned, setLastCoinsEarned] = useState(0);
+  // Difficulty multiplier picked on the difficulty screen before each run
+  const [difficulty, setDifficulty] = useState(1);
   // Standing-pose baseline captured on the calibration screen (null = the
   // game calibrates itself during the first second of play)
   const [poseBaseline, setPoseBaseline] = useState<PoseBaseline | null>(null);
@@ -119,10 +122,19 @@ export default function App() {
         {screen === 'LOBBY' && (
           <LobbyScreen
             user={user}
-            onStartCalibration={() => setScreen('CALIBRATION')}
+            onStartCalibration={() => setScreen('DIFFICULTY')}
             onOpenShop={() => setScreen('SHOP')}
             onOpenSettings={() => setIsPauseOpen(true)}
             onOpenSuika={() => setScreen('SUIKA')}
+          />
+        )}
+
+        {screen === 'DIFFICULTY' && (
+          <DifficultyScreen
+            onSelect={(mult) => {
+              setDifficulty(mult);
+              setScreen('CALIBRATION');
+            }}
           />
         )}
 
@@ -139,6 +151,7 @@ export default function App() {
         {screen === 'GAMEPLAY' && (
           <GameplayScreen
             poseBaseline={poseBaseline}
+            difficulty={difficulty}
             hasJetpack={user.ownedItems.includes('rocket_boost')}
             hasSuperShield={user.ownedItems.includes('shield_boost')}
             hasScoreDoubler={user.ownedItems.includes('score_doubler')}
@@ -177,7 +190,6 @@ export default function App() {
 
         {screen === 'PACMAN' && (
           <PacmanScreen
-            poseBaseline={poseBaseline}
             onExit={() => setScreen('SHOP')}
           />
         )}
@@ -185,7 +197,6 @@ export default function App() {
         {screen === 'SUIKA' && (
           <SuikaScreen
             poseBaseline={poseBaseline}
-            onExit={() => setScreen('LOBBY')}
           />
         )}
       </main>

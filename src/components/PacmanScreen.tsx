@@ -1,22 +1,10 @@
-// Motion-controlled mini Pac-Man. Body lean steers Pac-Man through the maze:
-// lean left/right to move sideways, stretch up / crouch down to move
-// vertically. Reuses the YOLO26 pose model and skeleton overlay from the
-// main game; keyboard arrows work as fallback.
+// Casual mini Pac-Man: swipe on the maze (touch or mouse drag) to steer,
+// arrow keys / WASD work too. No webcam, no pose tracking.
 
 import React, { useEffect, useRef, useState } from 'react';
 import { playButtonClick, playCoinSound, playVictorySound } from '../utils/audio';
-import {
-  averageBaseline,
-  detectPose,
-  drawSkeleton,
-  measureBaseline,
-  measureShoulderX,
-  measureShoulderY,
-  PoseBaseline,
-} from '../utils/poseDetector';
 
 interface PacmanScreenProps {
-  poseBaseline?: PoseBaseline | null;
   onExit: () => void;
 }
 
@@ -72,118 +60,57 @@ function buildLevel() {
   return { dots, pac, ghosts };
 }
 
-export const PacmanScreen: React.FC<PacmanScreenProps> = ({ poseBaseline = null, onExit }) => {
+export const PacmanScreen: React.FC<PacmanScreenProps> = ({ onExit }) => {
   const [score, setScore] = useState(0);
   const [status, setStatus] = useState<GameStatus>('playing');
-  const [webcamActive, setWebcamActive] = useState(false);
-  const [poseStatus, setPoseStatus] = useState<'loading' | 'active' | 'unavailable'>('loading');
   const [runId, setRunId] = useState(0); // bump to restart
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const skeletonCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const dirRef = useRef<Dir>(DIRS.left);
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
   const statusRef = useRef<GameStatus>('playing');
   statusRef.current = status;
 
-  // Match skeleton overlay resolution to its displayed size
-  useEffect(() => {
-    const canvas = skeletonCanvasRef.current;
-    if (!canvas) return;
-    canvas.width = canvas.clientWidth;
-    canvas.height = canvas.clientHeight;
-  }, []);
-
-  // Webcam init
-  useEffect(() => {
-    navigator.mediaDevices?.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } } })
-      .then((stream) => {
-        if (videoRef.current) videoRef.current.srcObject = stream;
-        setWebcamActive(true);
-      })
-      .catch(() => setWebcamActive(false));
-    return () => {
-      const stream = videoRef.current?.srcObject as MediaStream | null;
-      stream?.getTracks().forEach((t) => t.stop());
-    };
-  }, []);
-
-  // Pose steering: dominant body-lean axis becomes Pac-Man's desired direction
-  useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const baselineRef = { current: poseBaseline as PoseBaseline | null };
-    const samples: PoseBaseline[] = [];
-    let calibrationStart = 0;
-
-    const tick = async () => {
-      if (cancelled) return;
-      const video = videoRef.current;
-      if (video && video.readyState >= 2) {
-        try {
-          const kps = await detectPose(video);
-          if (cancelled) return;
-          setPoseStatus('active');
-          const canvas = skeletonCanvasRef.current;
-          if (canvas) drawSkeleton(canvas, video, kps);
-
-          if (kps) {
-            // Self-calibrate during the first second if no baseline was
-            // captured on the calibration screen
-            if (!baselineRef.current) {
-              const m = measureBaseline(kps);
-              if (m) {
-                if (samples.length === 0) calibrationStart = Date.now();
-                samples.push(m);
-                if (Date.now() - calibrationStart >= 1000 && samples.length >= 3) {
-                  baselineRef.current = averageBaseline(samples);
-                }
-              }
-            } else {
-              const b = baselineRef.current;
-              const sx = measureShoulderX(kps);
-              const sy = measureShoulderY(kps);
-              if (sx !== null && sy !== null) {
-                const dxN = (sx - b.centerX) / b.shoulderW; // + = lean right
-                const dyN = (sy - b.shoulderY) / b.torso; // + = crouch, - = stretch up
-                if (Math.abs(dxN) > 0.35 && Math.abs(dxN) >= Math.abs(dyN)) {
-                  dirRef.current = dxN > 0 ? DIRS.right : DIRS.left;
-                } else if (Math.abs(dyN) > 0.3) {
-                  dirRef.current = dyN > 0 ? DIRS.down : DIRS.up;
-                }
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Pose detection unavailable in Pac-Man:', e);
-          if (!cancelled) {
-            setPoseStatus('unavailable');
-            timer = setTimeout(tick, 3000);
-          }
-          return;
-        }
-      }
-      timer = setTimeout(tick, 40);
-    };
-    tick();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Keyboard fallback
+  // Keyboard + swipe steering. A swipe sets the desired direction along its
+  // dominant axis; re-anchoring after every turn keeps long drags steerable.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      let handled = true;
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') dirRef.current = DIRS.left;
       else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') dirRef.current = DIRS.right;
       else if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') dirRef.current = DIRS.up;
       else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') dirRef.current = DIRS.down;
+      else handled = false;
+      if (handled) e.preventDefault(); // arrows would otherwise scroll the page
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+
+  const onSwipeStart = (e: React.PointerEvent) => {
+    // Capture the pointer so a drag that leaves the maze keeps steering
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    swipeRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const onSwipeMove = (e: React.PointerEvent) => {
+    const start = swipeRef.current;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    if (Math.abs(dx) < 24 && Math.abs(dy) < 24) return;
+    dirRef.current =
+      Math.abs(dx) > Math.abs(dy)
+        ? dx > 0
+          ? DIRS.right
+          : DIRS.left
+        : dy > 0
+          ? DIRS.down
+          : DIRS.up;
+    swipeRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const onSwipeEnd = () => {
+    swipeRef.current = null;
+  };
 
   // Game loop
   useEffect(() => {
@@ -354,9 +281,18 @@ export const PacmanScreen: React.FC<PacmanScreenProps> = ({ poseBaseline = null,
         </button>
       </div>
 
-      {/* Maze Canvas */}
+      {/* Maze Canvas (swipe to steer) */}
       <div className="relative w-full max-w-md aspect-square rounded-2xl overflow-hidden border-4 border-white shadow-2xl">
-        <canvas ref={canvasRef} width={450} height={450} className="w-full h-full" />
+        <canvas
+          ref={canvasRef}
+          width={450}
+          height={450}
+          className="w-full h-full touch-none"
+          onPointerDown={onSwipeStart}
+          onPointerMove={onSwipeMove}
+          onPointerUp={onSwipeEnd}
+          onPointerCancel={onSwipeEnd}
+        />
 
         {status !== 'playing' && (
           <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-4 z-10">
@@ -390,38 +326,38 @@ export const PacmanScreen: React.FC<PacmanScreenProps> = ({ poseBaseline = null,
         )}
       </div>
 
-      <p className="mt-4 text-sm font-bold text-[#584235] text-center z-10">
-        左右倾斜身体 = 左右移动,向上跳 = 上移,蹲下 = 下移
-      </p>
-
-      {/* Picture-in-Picture Motion Camera */}
-      <div className="absolute top-4 left-4 z-20 bg-slate-900 rounded-2xl overflow-hidden w-36 h-26 border-4 border-white shadow-2xl flex items-center justify-center">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className={`w-full h-full object-cover scale-x-[-1] ${webcamActive ? 'block' : 'hidden'}`}
-        />
-        {!webcamActive && (
-          <span className="material-symbols-outlined text-3xl text-emerald-400">accessibility_new</span>
+      {/* On-screen D-pad: big tap targets for touch screens */}
+      <div className="mt-4 z-10 grid grid-cols-3 gap-2">
+        {(
+          [
+            { dir: null, icon: '' },
+            { dir: DIRS.up, icon: 'arrow_upward' },
+            { dir: null, icon: '' },
+            { dir: DIRS.left, icon: 'arrow_back' },
+            { dir: DIRS.down, icon: 'arrow_downward' },
+            { dir: DIRS.right, icon: 'arrow_forward' },
+          ] as const
+        ).map(({ dir, icon }, i) =>
+          dir === null ? (
+            <div key={`empty-${i}`} />
+          ) : (
+            <button
+              key={icon}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                dirRef.current = dir;
+              }}
+              className="w-16 h-14 rounded-2xl bg-[#0057c1] text-white border-b-4 border-[#001a43] flex items-center justify-center shadow-lg active:translate-y-0.5 active:border-b-2"
+            >
+              <span className="material-symbols-outlined text-3xl symbol-filled">{icon}</span>
+            </button>
+          ),
         )}
-        <canvas ref={skeletonCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
-        <div className="absolute top-1.5 left-1.5 flex items-center gap-1 bg-black/50 px-1.5 py-0.5 rounded-full">
-          <div
-            className={`w-1.5 h-1.5 rounded-full ${
-              poseStatus === 'active'
-                ? 'bg-emerald-400 animate-ping'
-                : poseStatus === 'loading'
-                  ? 'bg-amber-400 animate-pulse'
-                  : 'bg-red-400'
-            }`}
-          />
-          <span className="text-white text-[8px] font-bold">
-            {poseStatus === 'active' ? '体感追踪中' : poseStatus === 'loading' ? '加载 AI...' : '键盘模式'}
-          </span>
-        </div>
       </div>
+
+      <p className="mt-4 text-sm font-bold text-[#584235] text-center z-10">
+        点按方向按钮 / 在迷宫上滑动 / 键盘方向键,都可以转向
+      </p>
     </div>
   );
 };

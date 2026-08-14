@@ -270,7 +270,7 @@ export const ShopScreen: React.FC<ShopScreenProps> = ({
           className="mt-6 w-full bg-[#20b900] hover:brightness-110 text-white rounded-2xl px-6 py-4 flex items-center justify-center gap-3 border-b-8 border-[#0d4d00] shadow-xl transition-all active:scale-95"
         >
           <span className="material-symbols-outlined text-3xl symbol-filled">play_circle</span>
-          <span className="font-extrabold text-xl">体感吃豆人</span>
+          <span className="font-extrabold text-xl">休闲吃豆人</span>
         </button>
       </div>
     </div>
